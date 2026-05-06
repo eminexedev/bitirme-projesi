@@ -57,20 +57,21 @@ function generatePasswordValue(
   options: PasswordOptions,
   wordCount: number,
   separator: string,
+  language: 'en' | 'tr',
 ) {
   if (mode === 'standard') {
     return generatePassword(options);
   }
 
   if (mode === 'passphrase') {
-    return generatePassphrase(wordCount, separator);
+    return generatePassphrase(wordCount, separator, language);
   }
 
   return generatePronounceable(options.length);
 }
 
 export default function App() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [mode, setMode] = useState<Mode>('standard');
   const [options, setOptions] = useState<PasswordOptions>({
     length: 16,
@@ -107,7 +108,7 @@ export default function App() {
     symbols: true,
     excludeSimilar: false,
     customExclude: '',
-  }, 4, '-');
+  }, 4, '-', language);
 
   const [password, setPassword] = useState(initialPassword);
 
@@ -132,6 +133,7 @@ export default function App() {
       selectedOptions,
       selectedWordCount,
       selectedSeparator,
+      language,
     );
 
     if (!newPassword) return;
@@ -152,7 +154,7 @@ export default function App() {
       });
     }
 
-  }, [mode, options, wordCount, separator]);
+  }, [mode, options, wordCount, separator, language]);
 
   // Presets
   const handlePresetClick = (preset: 'wifi' | 'banking' | 'social' | 'admin') => {

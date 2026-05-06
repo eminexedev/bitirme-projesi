@@ -1,10 +1,23 @@
 export type Strength = 'Weak' | 'Medium' | 'Strong' | 'Very Strong' | 'Compromised';
 
+export type StrengthWarningCode =
+  | 'shortLength'
+  | 'datePattern'
+  | 'yearPattern'
+  | 'personalInfo'
+  | 'commonPattern'
+  | 'keyboardPattern'
+  | 'shiftPattern'
+  | 'sequencePattern'
+  | 'repetitionPattern'
+  | 'repeatingBlockPattern';
+
 export interface StrengthResult {
   score: number; // 0 to 4
   label: Strength;
   color: string;
   compromised?: boolean; // HIBP check result
+  warnings?: StrengthWarningCode[];
 }
 
 export interface StrengthOptions {
@@ -236,27 +249,33 @@ function getCharacterDiversityBonus(password: string): number {
 
 export function calculateStrength(password: string, options?: StrengthOptions): StrengthResult {
   if (!password) {
-    return { score: 0, label: 'Weak', color: 'bg-destructive' };
+    return { score: 0, label: 'Weak', color: 'bg-destructive', warnings: [] };
   }
+
+  const warningSet = new Set<StrengthWarningCode>();
 
   // NIST Guideline: Minimum 8 characters (< 8 is inherently weak)
   if (password.length < 8) {
-    return { score: 0, label: 'Weak', color: 'bg-destructive' };
+    warningSet.add('shortLength');
+    return { score: 0, label: 'Weak', color: 'bg-destructive', warnings: [...warningSet] };
   }
 
   // Check for date patterns - always weak
   if (hasDatePatterns(password)) {
-    return { score: 1, label: 'Weak', color: 'bg-destructive' };
+    warningSet.add('datePattern');
+    return { score: 1, label: 'Weak', color: 'bg-destructive', warnings: [...warningSet] };
   }
 
   // Check for year suffixes (e.g., Fenerbahce1907, Istanbul2024)
   if (hasYearSuffix(password)) {
-    return { score: 1, label: 'Weak', color: 'bg-destructive' };
+    warningSet.add('yearPattern');
+    return { score: 1, label: 'Weak', color: 'bg-destructive', warnings: [...warningSet] };
   }
 
   // Check for contextual user data violation
   if (checkUserContextViolation(password, options)) {
-    return { score: 1, label: 'Weak', color: 'bg-destructive' };
+    warningSet.add('personalInfo');
+    return { score: 1, label: 'Weak', color: 'bg-destructive', warnings: [...warningSet] };
   }
 
   // Normalize leetspeak and check for common patterns
@@ -276,12 +295,16 @@ export function calculateStrength(password: string, options?: StrengthOptions): 
     password.includes(pattern) || lowerPassword.includes(pattern)
   );
 
+  if (hasCommon) warningSet.add('commonPattern');
+  if (hasKeyboard) warningSet.add('keyboardPattern');
+  if (hasShift) warningSet.add('shiftPattern');
+
   if (hasCommon || hasKeyboard || hasShift) {
     if (password.length <= 12) {
-      return { score: 1, label: 'Weak', color: 'bg-destructive' };
+      return { score: 1, label: 'Weak', color: 'bg-destructive', warnings: [...warningSet] };
     }
     // Longer passwords with weak patterns = Medium
-    return { score: 2, label: 'Medium', color: 'bg-yellow-500' };
+    return { score: 2, label: 'Medium', color: 'bg-yellow-500', warnings: [...warningSet] };
   }
 
   let poolSize = 0;
@@ -299,6 +322,11 @@ export function calculateStrength(password: string, options?: StrengthOptions): 
   const sequencePenalty = hasSequences(password) * 5; // 5 bits per sequence found
   const repetitionPenalty = hasRepetitions(password) * 4; // 4 bits per repetition found
   const consecutiveRepeatingPenalty = hasConsecutiveRepeatingPatterns(password); // Extra penalty for repeating patterns
+
+  if (sequencePenalty > 0) warningSet.add('sequencePattern');
+  if (repetitionPenalty > 0) warningSet.add('repetitionPattern');
+  if (consecutiveRepeatingPenalty > 0) warningSet.add('repeatingBlockPattern');
+
   entropy -= sequencePenalty + repetitionPenalty + consecutiveRepeatingPenalty;
 
   // Apply bonus for character diversity (only for passwords >= 8 chars)
@@ -307,14 +335,59 @@ export function calculateStrength(password: string, options?: StrengthOptions): 
 
   // Determine strength based on adjusted entropy
   if (entropy < 40) {
-    return { score: 1, label: 'Weak', color: 'bg-destructive' };
+    return { score: 1, label: 'Weak', color: 'bg-destructive', warnings: [...warningSet] };
   } else if (entropy < 60) {
-    return { score: 2, label: 'Medium', color: 'bg-yellow-500' };
+    return { score: 2, label: 'Medium', color: 'bg-yellow-500', warnings: [...warningSet] };
   } else if (entropy < 80) {
-    return { score: 3, label: 'Strong', color: 'bg-green-500' };
+    return { score: 3, label: 'Strong', color: 'bg-green-500', warnings: [...warningSet] };
   } else {
-    return { score: 4, label: 'Very Strong', color: 'bg-primary' };
+    return { score: 4, label: 'Very Strong', color: 'bg-primary', warnings: [...warningSet] };
   }
+}
+
+// Compute entropy details and estimated crack times for various attacker speeds
+export function computeEntropyDetails(password: string) {
+  let poolSize = 0;
+  if (/[A-Z]/.test(password)) poolSize += 26;
+  if (/[a-z]/.test(password)) poolSize += 26;
+  if (/[0-9]/.test(password)) poolSize += 10;
+  if (/[^A-Za-z0-9]/.test(password)) poolSize += 32;
+  if (poolSize === 0) poolSize = 1;
+
+  const baseEntropy = password.length * Math.log2(poolSize);
+
+  // Apply penalties mirroring calculateStrength
+  const sequencePenalty = hasSequences(password) * 5;
+  const repetitionPenalty = hasRepetitions(password) * 4;
+  const consecutiveRepeatingPenalty = hasConsecutiveRepeatingPatterns(password);
+  const diversityBonus = getCharacterDiversityBonus(password);
+
+  const adjustedEntropy = Math.max(0, baseEntropy - sequencePenalty - repetitionPenalty - consecutiveRepeatingPenalty + diversityBonus);
+
+  // Estimate guesses: 2^entropy
+  const guesses = Math.pow(2, adjustedEntropy);
+
+  // Attack speeds (guesses per second)
+  // Attack speeds chosen to approximate GRC-style categories
+  const speeds: Record<string, number> = {
+    // ~100 attempts per hour (throttled online service)
+    online_throttled: 100 / 3600,
+    // ~10 attempts per second (online, unthrottled via many IPs)
+    online_unthrottled: 10,
+    // ~10k/sec (single CPU, slow offline)
+    offline_slow: 1e4,
+    // ~100M/sec (GPU cluster - tuned to match common GRC-like tables)
+    offline_gpu: 1e8,
+    // ~10B/sec (very large distributed/offline cluster)
+    offline_highend: 1e10,
+  };
+
+  const crackTimes: Record<string, number> = {};
+  for (const [k, v] of Object.entries(speeds)) {
+    crackTimes[k] = guesses / v; // seconds
+  }
+
+  return { baseEntropy, adjustedEntropy, guesses, crackTimes };
 }
 
 // Check if password meets selected character type requirements
