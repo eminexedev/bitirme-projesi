@@ -14,12 +14,18 @@ import { generatePronounceable } from './utils/pronounceableGenerator';
 import { calculateStrength } from './utils/strengthCalculator';
 import { checkPwned } from './utils/pwnedChecker';
 
-import { ShieldCheck, Zap, RefreshCw, Wifi, Building, Share2, Key } from 'lucide-react';
+import { ShieldCheck, Zap, RefreshCw, Wifi, Landmark, Share2, Key } from 'lucide-react';
 import { cn } from './utils/cn';
 import { WelcomeDialog } from './components/WelcomeDialog';
 import { WifiQrDialog } from './components/WifiQrDialog';
 
 type Mode = 'standard' | 'passphrase' | 'pronounceable';
+type PresetType = 'wifi' | 'banking' | 'social' | 'admin' | null;
+
+interface PasswordHistoryItem {
+  password: string;
+  preset?: PresetType;
+}
 
 const MODE_LABEL_KEYS: Record<Mode, 'standardModeLabel' | 'passphraseModeLabel' | 'pronounceableModeLabel'> = {
   standard: 'standardModeLabel',
@@ -27,13 +33,20 @@ const MODE_LABEL_KEYS: Record<Mode, 'standardModeLabel' | 'passphraseModeLabel' 
   pronounceable: 'pronounceableModeLabel',
 };
 
-function loadHistory() {
+function loadHistory(): PasswordHistoryItem[] {
   const saved = localStorage.getItem('passwordHistory');
   if (!saved) return [];
 
   try {
     const parsed = JSON.parse(saved);
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+    
+    // Eski format uyumluluğu: string[] -> PasswordHistoryItem[]
+    return parsed.map(item => 
+      typeof item === 'string' 
+        ? { password: item } 
+        : item
+    );
   } catch {
     return [];
   }
@@ -71,8 +84,8 @@ export default function App() {
   const [wordCount, setWordCount] = useState(4);
   const [separator, setSeparator] = useState('-');
 
-  const [history, setHistory] = useState<string[]>(loadHistory);
-  const [selectedPreset, setSelectedPreset] = useState<'wifi' | 'banking' | 'social' | 'admin' | null>(null);
+  const [history, setHistory] = useState<PasswordHistoryItem[]>(loadHistory);
+  const [selectedPreset, setSelectedPreset] = useState<PresetType>(null);
   const [showPresetDialog, setShowPresetDialog] = useState(false);
   const [showWelcome, setShowWelcome] = useState<boolean>(() => {
     try {
@@ -112,6 +125,7 @@ export default function App() {
     selectedWordCount: number = wordCount,
     selectedSeparator: string = separator,
     saveToHistory: boolean = true,
+    preset: PresetType = null,
   ) => {
     const newPassword = generatePasswordValue(
       selectedMode,
@@ -130,7 +144,9 @@ export default function App() {
     // Save to history
     if (saveToHistory) {
       setHistory(prev => {
-        const newHistory = [newPassword, ...prev.filter(p => p !== newPassword)].slice(0, 5);
+        const newItem: PasswordHistoryItem = { password: newPassword, preset };
+        const filtered = prev.filter(p => p.password !== newPassword);
+        const newHistory = [newItem, ...filtered].slice(0, 5);
         localStorage.setItem('passwordHistory', JSON.stringify(newHistory));
         return newHistory;
       });
@@ -161,7 +177,7 @@ export default function App() {
     setMode('standard');
     setOptions(nextOptions);
     setIsWifiMode(preset === 'wifi');
-    void handleGenerate('standard', nextOptions, wordCount, separator);
+    void handleGenerate('standard', nextOptions, wordCount, separator, true, preset);
     setShowPresetDialog(false);
   };
 
@@ -278,6 +294,7 @@ export default function App() {
               pwnedCount={pwnedCount}
               isCheckingPwned={isCheckingPwned}
               checkedPassword={lastCheckedPassword}
+              options={options}
             />
           </div>
 
@@ -413,7 +430,7 @@ export default function App() {
              <h3 className={sectionLabelClassName + ' mb-4'}>{t('quickPresets')}</h3>
              <div className="grid grid-cols-2 gap-3">
                <PresetButton icon={<Wifi size={16}/>} label={t('wifi')} onClick={() => handlePresetClick('wifi')} />
-               <PresetButton icon={<Building size={16}/>} label={t('banking')} onClick={() => handlePresetClick('banking')} />
+               <PresetButton icon={<Landmark size={16}/>} label={t('banking')} onClick={() => handlePresetClick('banking')} />
                <PresetButton icon={<Share2 size={16}/>} label={t('social')} onClick={() => handlePresetClick('social')} />
                <PresetButton icon={<Key size={16}/>} label={t('admin')} onClick={() => handlePresetClick('admin')} />
              </div>

@@ -1,9 +1,17 @@
-export type Strength = 'Weak' | 'Medium' | 'Strong' | 'Very Strong';
+export type Strength = 'Weak' | 'Medium' | 'Strong' | 'Very Strong' | 'Compromised';
 
 export interface StrengthResult {
   score: number; // 0 to 4
   label: Strength;
   color: string;
+  compromised?: boolean; // HIBP check result
+}
+
+export interface StrengthOptions {
+  username?: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
 }
 
 // Common patterns that weaken passwords
@@ -17,6 +25,12 @@ const COMMON_PATTERNS = [
 const KEYBOARD_PATTERNS = [
   'qwerty', 'asdfgh', 'zxcvbn', 'qazwsx', 'qweasd', 'asdfghjkl',
   '1234567890', 'qwertyuiop', 'qwertyu', 'asdfg',
+];
+
+// Shift-key variations of keyboard patterns
+const SHIFT_PATTERNS = [
+  '!@#$%', '!@#$%^&*()', '@werty', 'QWERTY', 'ASDFGH',
+  '~!@#$%^', 'qweasdzxc', 'qweasd', 'zxcvbnm',
 ];
 
 // Sequences to detect (alphabetic, numeric, etc.)
@@ -59,16 +73,153 @@ function hasRepetitions(password: string): number {
   return repetitionCount;
 }
 
-// Check for common patterns
-function hasCommonPatterns(password: string): boolean {
+// Detect consecutive repeating patterns (e.g., "121212", "abab", "123123")
+function hasConsecutiveRepeatingPatterns(password: string): number {
+  let penaltyCount = 0;
   const lowerPassword = password.toLowerCase();
 
-  return COMMON_PATTERNS.some(pattern => lowerPassword.includes(pattern)) ||
-         KEYBOARD_PATTERNS.some(pattern => lowerPassword.includes(pattern));
+  // Check for 2-character repeating patterns (min 2 repetitions = 4 chars total)
+  for (let patternLen = 1; patternLen <= Math.floor(password.length / 4); patternLen++) {
+    for (let i = 0; i <= password.length - patternLen * 4; i++) {
+      const pattern = lowerPassword.substring(i, i + patternLen);
+      let isRepeating = true;
+
+      for (let j = i + patternLen; j < i + patternLen * 4; j += patternLen) {
+        if (lowerPassword.substring(j, j + patternLen) !== pattern) {
+          isRepeating = false;
+          break;
+        }
+      }
+
+      if (isRepeating) {
+        penaltyCount += 3;
+      }
+    }
+  }
+
+  return penaltyCount;
 }
 
-// Calculate character diversity bonus
+// Detect common date formats in password (e.g., "25051990", "25/05/1990", "1990-05-25")
+function hasDatePatterns(password: string): boolean {
+  // Common date formats: DDMMYYYY, DD/MM/YYYY, DD-MM-YYYY, YYYYMMDD, YYYY-MM-DD, YYYY/MM/DD
+  const datePatterns = [
+    /\b(0?[1-9]|[12][0-9]|3[01])([-/]?)(0?[1-9]|1[0-2])\2(19|20)\d{2}\b/gi, // DD-MM-YYYY or similar
+    /\b(19|20)\d{2}([-/]?)(0?[1-9]|1[0-2])\2(0?[1-9]|[12][0-9]|3[01])\b/gi, // YYYY-MM-DD or similar
+    /\b(0[1-9]|[12][0-9]|3[01])(0[1-9]|1[0-2])(19|20)\d{2}\b/g, // DDMMYYYY
+    /\b(19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12][0-9]|3[01])\b/g, // YYYYMMDD
+  ];
+
+  return datePatterns.some(pattern => pattern.test(password));
+}
+
+// Normalize leetspeak and common character substitutions
+function normalizeLeetspeak(password: string): string {
+  const leetMap: Record<string, string> = {
+    '@': 'a', '4': 'a', // @ = a, 4 = a
+    '8': 'b', // 8 = b
+    '(': 'c', '©': 'c', // ( = c
+    '3': 'e', // 3 = e
+    '6': 'g', // 6 = g
+    '#': 'h', // # = h
+    '1': 'i', '!': 'i', // 1, !, = i
+    '0': 'o', // 0 = o
+    '9': 'q', // 9 = q
+    '$': 's', '5': 's', // $, 5 = s
+    '+': 't', '7': 't', // +, 7 = t
+    '/': 'v', // / = v
+    '><': 'x', // >< = x
+    '2': 'z', // 2 = z
+  };
+
+  let normalized = password.toLowerCase();
+  // Simple character replacement without regex for leetspeak
+  for (const [leet, char] of Object.entries(leetMap)) {
+    normalized = normalized.split(leet).join(char);
+  }
+  return normalized;
+}
+
+// Detect year suffixes/prefixes (e.g., "Fenerbahce1907", "Istanbul2024")
+function hasYearSuffix(password: string): boolean {
+  return /(19|20)\d{2}/.test(password);
+}
+
+// Check if password contains user's personal information
+function checkUserContextViolation(password: string, options?: StrengthOptions): boolean {
+  if (!options) return false;
+
+  const lowerPassword = password.toLowerCase();
+  const userInfo = [
+    options.username,
+    options.firstName,
+    options.lastName,
+    options.email?.split('@')[0], // email prefix
+  ].filter(Boolean) as string[];
+
+  for (const info of userInfo) {
+    const lowerInfo = info.toLowerCase();
+    // Check direct match
+    if (lowerPassword.includes(lowerInfo)) {
+      return true;
+    }
+    // Check reversed match
+    if (lowerPassword.includes(lowerInfo.split('').reverse().join(''))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// SHA-1 hash helper for HIBP API (k-anonymity model)
+async function hashPasswordSHA1(password: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const hashBuffer = await crypto.subtle.digest('SHA-1', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
+}
+
+// Check if password has been compromised via HIBP API (Have I Been Pwned)
+export async function checkPwnedPassword(password: string): Promise<boolean> {
+  try {
+    const hash = await hashPasswordSHA1(password);
+    const prefix = hash.substring(0, 5); // Send only first 5 chars (k-anonymity)
+    const suffix = hash.substring(5);
+
+    const response = await fetch(`https://api.pwnedpasswords.com/range/${prefix}`);
+    
+    if (!response.ok) {
+      // API error - assume not compromised (fail open)
+      console.warn('HIBP API error:', response.status);
+      return false;
+    }
+
+    const text = await response.text();
+    const hashes = text.split('\r\n');
+
+    // Check if our suffix is in the response
+    for (const line of hashes) {
+      const [hashSuffix] = line.split(':');
+      if (hashSuffix === suffix) {
+        return true; // Password found in breach database
+      }
+    }
+
+    return false; // Password not found
+  } catch (error) {
+    console.error('HIBP check failed:', error);
+    return false; // Assume not compromised on error
+  }
+}
+
+// Calculate character diversity bonus (only for passwords >= 8 chars to avoid double-counting)
 function getCharacterDiversityBonus(password: string): number {
+  // Don't apply diversity bonus to very short passwords (< 8 chars)
+  // as entropy already accounts for pool size increase
+  if (password.length < 8) return 0;
+
   let bonus = 0;
   const hasLower = /[a-z]/.test(password);
   const hasUpper = /[A-Z]/.test(password);
@@ -80,27 +231,57 @@ function getCharacterDiversityBonus(password: string): number {
   if (hasDigits) bonus += 1;
   if (hasSymbols) bonus += 1;
 
-  return bonus;
+  return bonus * 5; // 5 bits per diversity category
 }
 
-export function calculateStrength(password: string): StrengthResult {
+export function calculateStrength(password: string, options?: StrengthOptions): StrengthResult {
   if (!password) {
     return { score: 0, label: 'Weak', color: 'bg-destructive' };
   }
 
-  // Basic length check
-  if (password.length < 4) {
+  // NIST Guideline: Minimum 8 characters (< 8 is inherently weak)
+  if (password.length < 8) {
     return { score: 0, label: 'Weak', color: 'bg-destructive' };
   }
 
-  // Common patterns are always weak
-  if (hasCommonPatterns(password)) {
-    if (password.length <= 8) {
+  // Check for date patterns - always weak
+  if (hasDatePatterns(password)) {
+    return { score: 1, label: 'Weak', color: 'bg-destructive' };
+  }
+
+  // Check for year suffixes (e.g., Fenerbahce1907, Istanbul2024)
+  if (hasYearSuffix(password)) {
+    return { score: 1, label: 'Weak', color: 'bg-destructive' };
+  }
+
+  // Check for contextual user data violation
+  if (checkUserContextViolation(password, options)) {
+    return { score: 1, label: 'Weak', color: 'bg-destructive' };
+  }
+
+  // Normalize leetspeak and check for common patterns
+  const normalizedPassword = normalizeLeetspeak(password);
+  const lowerPassword = password.toLowerCase();
+
+  // Check common patterns in both original and normalized form
+  const hasCommon = COMMON_PATTERNS.some(pattern => 
+    normalizedPassword.includes(pattern) || lowerPassword.includes(pattern)
+  );
+
+  const hasKeyboard = KEYBOARD_PATTERNS.some(pattern => 
+    normalizedPassword.includes(pattern) || lowerPassword.includes(pattern)
+  );
+
+  const hasShift = SHIFT_PATTERNS.some(pattern => 
+    password.includes(pattern) || lowerPassword.includes(pattern)
+  );
+
+  if (hasCommon || hasKeyboard || hasShift) {
+    if (password.length <= 12) {
       return { score: 1, label: 'Weak', color: 'bg-destructive' };
     }
-    if (password.length <= 12) {
-      return { score: 2, label: 'Medium', color: 'bg-yellow-500' };
-    }
+    // Longer passwords with weak patterns = Medium
+    return { score: 2, label: 'Medium', color: 'bg-yellow-500' };
   }
 
   let poolSize = 0;
@@ -117,25 +298,60 @@ export function calculateStrength(password: string): StrengthResult {
   // Apply penalties for weak patterns
   const sequencePenalty = hasSequences(password) * 5; // 5 bits per sequence found
   const repetitionPenalty = hasRepetitions(password) * 4; // 4 bits per repetition found
-  entropy -= sequencePenalty + repetitionPenalty;
+  const consecutiveRepeatingPenalty = hasConsecutiveRepeatingPatterns(password); // Extra penalty for repeating patterns
+  entropy -= sequencePenalty + repetitionPenalty + consecutiveRepeatingPenalty;
 
-  // Apply bonus for character diversity
-  const diversityBonus = getCharacterDiversityBonus(password) * 5;
+  // Apply bonus for character diversity (only for passwords >= 8 chars)
+  const diversityBonus = getCharacterDiversityBonus(password);
   entropy += diversityBonus;
 
-  // Length-based adjustments
-  if (password.length < 6) {
-    entropy *= 0.8; // Penalize short passwords further
-  }
-
   // Determine strength based on adjusted entropy
-  if (entropy < 35) {
+  if (entropy < 40) {
     return { score: 1, label: 'Weak', color: 'bg-destructive' };
-  } else if (entropy < 55) {
+  } else if (entropy < 60) {
     return { score: 2, label: 'Medium', color: 'bg-yellow-500' };
-  } else if (entropy < 75) {
+  } else if (entropy < 80) {
     return { score: 3, label: 'Strong', color: 'bg-green-500' };
   } else {
     return { score: 4, label: 'Very Strong', color: 'bg-primary' };
   }
+}
+
+// Check if password meets selected character type requirements
+export interface PasswordCompliance {
+  meetsRequirements: boolean;
+  missingTypes: string[];
+}
+
+export function checkPasswordCompliance(
+  password: string,
+  requirements: {
+    uppercase: boolean;
+    lowercase: boolean;
+    numbers: boolean;
+    symbols: boolean;
+  }
+): PasswordCompliance {
+  const missingTypes: string[] = [];
+
+  if (requirements.uppercase && !/[A-Z]/.test(password)) {
+    missingTypes.push('uppercase');
+  }
+
+  if (requirements.lowercase && !/[a-z]/.test(password)) {
+    missingTypes.push('lowercase');
+  }
+
+  if (requirements.numbers && !/[0-9]/.test(password)) {
+    missingTypes.push('numbers');
+  }
+
+  if (requirements.symbols && !/[^A-Za-z0-9]/.test(password)) {
+    missingTypes.push('symbols');
+  }
+
+  return {
+    meetsRequirements: missingTypes.length === 0,
+    missingTypes,
+  };
 }

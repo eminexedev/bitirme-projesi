@@ -1,16 +1,18 @@
-import { type Strength, type StrengthResult } from '../utils/strengthCalculator';
+import { type Strength, type StrengthResult, checkPasswordCompliance } from '../utils/strengthCalculator';
 import { cn } from '../utils/cn';
 import { AlertTriangle } from 'lucide-react';
 import { useState } from 'react';
 import { KAnonymityDialog } from './KAnonymityDialog';
 import { useLanguage } from '../i18n/useLanguage.ts';
 import { translations } from '../i18n/translations.ts';
+import { type PasswordOptions } from '../utils/passwordGenerator';
 
 const strengthTranslationKeyMap: Record<Strength, keyof typeof translations.en> = {
   Weak: 'weak',
   Medium: 'medium',
   Strong: 'strong',
   'Very Strong': 'veryStrong',
+  Compromised: 'compromised',
 };
 
 interface StrengthMeterProps {
@@ -19,15 +21,35 @@ interface StrengthMeterProps {
   pwnedCount: number;
   isCheckingPwned: boolean;
   checkedPassword: string | null;
+  options?: PasswordOptions;
 }
 
-export function StrengthMeter({ password, strength, pwnedCount, isCheckingPwned, checkedPassword }: StrengthMeterProps) {
+export function StrengthMeter({ password, strength, pwnedCount, isCheckingPwned, checkedPassword, options }: StrengthMeterProps) {
   const bars = Array.from({ length: 4 });
   const { t } = useLanguage();
   const strengthTranslationKey = strengthTranslationKeyMap[strength.label];
   const hasCheckedCurrentPassword = checkedPassword === password;
   const labelClassName = 'text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground';
   const [showKAnon, setShowKAnon] = useState(false);
+
+  // Check password compliance with selected options
+  const compliance = options ? checkPasswordCompliance(password, {
+    uppercase: options.uppercase,
+    lowercase: options.lowercase,
+    numbers: options.numbers,
+    symbols: options.symbols,
+  }) : null;
+
+  const getMissingTypesText = (missingTypes: string[]): string => {
+    const typeLabels: Record<string, string> = {
+      uppercase: t('uppercase'),
+      lowercase: t('lowercase'),
+      numbers: t('numbers'),
+      symbols: t('symbols'),
+    };
+
+    return missingTypes.map(type => typeLabels[type]).join(', ');
+  };
 
   return (
     <div className="flex flex-col gap-2 w-full mt-4">
@@ -50,9 +72,27 @@ export function StrengthMeter({ password, strength, pwnedCount, isCheckingPwned,
         ))}
       </div>
 
-      {isCheckingPwned && hasCheckedCurrentPassword && (
+      {password && compliance && !compliance.meetsRequirements && (
+        <div className="flex items-start gap-2 mt-2 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-md text-yellow-700 dark:text-yellow-500">
+          <AlertTriangle size={18} className="shrink-0 mt-0.5" />
+          <div className="text-sm leading-relaxed">
+            <strong>{t('complianceWarning')}</strong> {t('complianceMissing')} <strong>{getMissingTypesText(compliance.missingTypes)}</strong>
+          </div>
+        </div>
+      )}
+
+      {isCheckingPwned && Boolean(password) && (
         <div className="text-[11px] font-medium tracking-wide text-muted-foreground animate-pulse mt-2">
           {t('checkingBreaches')}
+        </div>
+      )}
+
+      {pwnedCount < 0 && !isCheckingPwned && hasCheckedCurrentPassword && (
+        <div className="flex items-start gap-2 mt-2 p-3 bg-amber-500/10 border border-amber-500/30 rounded-md text-amber-700 dark:text-amber-500">
+          <AlertTriangle size={18} className="shrink-0 mt-0.5" />
+          <div className="text-sm leading-relaxed">
+            {t('pwnedCheckUnavailable')}
+          </div>
         </div>
       )}
 
@@ -65,7 +105,7 @@ export function StrengthMeter({ password, strength, pwnedCount, isCheckingPwned,
         </div>
       )}
       
-      {pwnedCount === 0 && !isCheckingPwned && strength.score > 0 && hasCheckedCurrentPassword && (
+      {pwnedCount === 0 && !isCheckingPwned && hasCheckedCurrentPassword && (
          <div className="flex items-center gap-2 mt-2">
           <div className="text-[11px] font-medium tracking-wide text-green-600 dark:text-green-400">{t('safeNoBreach')}</div>
           <button

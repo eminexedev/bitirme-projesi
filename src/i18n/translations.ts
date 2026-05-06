@@ -12,7 +12,9 @@ export const translations = {
     medium: 'Medium',
     strong: 'Strong',
     veryStrong: 'Very Strong',
+    compromised: 'Compromised',
     checkingBreaches: 'Checking known data breaches...',
+    pwnedCheckUnavailable: 'Could not verify data breaches right now. Please try again.',
     warningBreach: 'Warning: This password has appeared in',
     dataBreaches: 'data breaches. You should avoid using it!',
     safeNoBreach: '✓ Safe: Not found in known data breaches.',
@@ -68,6 +70,8 @@ export const translations = {
     generateQr: 'Generate QR',
     close: 'Close',
     wifiQrTooltip: 'Show Wi-Fi QR Code',
+    complianceWarning: 'Warning:',
+    complianceMissing: 'Missing in your password:',
   },
   tr: {
     appTitle: 'GüvenliAnahtar',
@@ -80,7 +84,9 @@ export const translations = {
     medium: 'Orta',
     strong: 'Güçlü',
     veryStrong: 'Çok Güçlü',
+    compromised: 'Ele Geçirilmiş',
     checkingBreaches: 'Bilinen veri ihlalleri kontrol ediliyor...',
+    pwnedCheckUnavailable: 'Veri ihlali kontrolü şu anda yapılamıyor. Lütfen tekrar deneyin.',
     warningBreach: 'Uyarı: Bu şifre',
     dataBreaches: 'veri ihlalinde bulundu. Kullanmaktan kaçınmalısınız!',
     safeNoBreach: '✓ Güvenli: Bilinen veri ihlallerinde bulunmadı.',
@@ -136,5 +142,7 @@ export const translations = {
     generateQr: 'QR Kod Oluştur',
     close: 'Kapat',
     wifiQrTooltip: 'Wi-Fi QR Kodu Göster',
+    complianceWarning: 'Uyarı:',
+    complianceMissing: 'Şifrenizde eksik:',
   }
 };
