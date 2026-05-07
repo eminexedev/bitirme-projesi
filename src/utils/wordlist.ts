@@ -23,6 +23,8 @@ export const WORD_LISTS: Record<WordlistLanguage, string[]> = {
     'spring', 'summer', 'autumn', 'winter', 'season', 'weather', 'climate', 'temp', 'degree', 'freeze',
     'book', 'page', 'word', 'letter', 'note', 'card', 'stamp', 'mail', 'post', 'sign',
   ],
+
+  // Türkçe kelime listesi
   tr: [
     'kitap', 'defter', 'kalem', 'silgi', 'okul', 'sifre', 'guven', 'parola', 'yildiz', 'ay',
     'gunes', 'dunya', 'sehir', 'koy', 'orman', 'dag', 'vadi', 'nehir', 'gol', 'deniz',
@@ -46,6 +48,7 @@ export const WORD_LISTS: Record<WordlistLanguage, string[]> = {
 
 export const WORD_LIST = WORD_LISTS.en;
 
+// Belirli bir dil için kelime listesi döndürür (varsayılan olarak İngilizce kelimeleri kullanır)
 export function getWordList(language: WordlistLanguage = 'en'): string[] {
   return WORD_LISTS[language] ?? WORD_LISTS.en;
 }
