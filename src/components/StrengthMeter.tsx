@@ -1,4 +1,4 @@
-import { type Strength, type StrengthResult, type StrengthWarningCode, checkPasswordCompliance } from '../utils/strengthCalculator';
+import { type PasswordEntropyContext, type Strength, type StrengthResult, type StrengthWarningCode, checkPasswordCompliance } from '../utils/strengthCalculator';
 import { computeEntropyDetails } from '../utils/strengthCalculator';
 import { cn } from '../utils/cn';
 import { AlertTriangle } from 'lucide-react';
@@ -20,13 +20,14 @@ const strengthTranslationKeyMap: Record<Strength, keyof typeof translations.en> 
 interface StrengthMeterProps {
   password: string;
   strength: StrengthResult;
+  entropyContext?: PasswordEntropyContext;
   pwnedCount: number;
   isCheckingPwned: boolean;
   checkedPassword: string | null;
   options?: PasswordOptions;
 }
 
-export function StrengthMeter({ password, strength, pwnedCount, isCheckingPwned, checkedPassword, options }: StrengthMeterProps) {
+export function StrengthMeter({ password, strength, entropyContext, pwnedCount, isCheckingPwned, checkedPassword, options }: StrengthMeterProps) {
   const bars = Array.from({ length: 4 });
   const { t, language } = useLanguage();
   const [showEntropyInfo, setShowEntropyInfo] = useState(false);
@@ -39,15 +40,14 @@ export function StrengthMeter({ password, strength, pwnedCount, isCheckingPwned,
   const formatGuesses = (g: number) => {
     if (!isFinite(g)) return '∞';
     if (g <= 0) return '0';
-    // Use compact notation for large numbers when supported
+    // Keep large values short so they never overflow the details panel.
+    if (g >= 1e9) return g.toExponential(2).replace('e+', '×10^');
     try {
       const nf = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 2 });
       if (g >= 1000) return nf.format(g);
     } catch {
       // fall through
     }
-    // Fallback to exponential for extremely large
-    if (g >= 1e12) return g.toExponential(2);
     return Math.round(g).toLocaleString();
   };
 
@@ -111,7 +111,7 @@ export function StrengthMeter({ password, strength, pwnedCount, isCheckingPwned,
       {/* Entropy / crack time estimates */}
       {password && (
         (() => {
-          const details = computeEntropyDetails(password);
+          const details = computeEntropyDetails(password, undefined, entropyContext);
           const unitText = (value: number, unit: 'second' | 'minute' | 'hour' | 'day' | 'month' | 'year') => {
             const suffix = value === 1 ? 'Singular' : 'Plural';
             return t(`${unit}Unit${suffix}` as keyof typeof translations.en);
@@ -154,7 +154,7 @@ export function StrengthMeter({ password, strength, pwnedCount, isCheckingPwned,
                   <button
                     onClick={() => setShowEntropyInfo(true)}
                     title={t('entropyHelp')}
-                    className="text-[11px] text-muted-foreground hover:text-foreground focus:outline-none"
+                    className="cursor-pointer text-[11px] text-muted-foreground hover:text-foreground focus:outline-none"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-info">
                       <circle cx="12" cy="12" r="10"></circle>
@@ -184,7 +184,10 @@ export function StrengthMeter({ password, strength, pwnedCount, isCheckingPwned,
                   <div className="font-medium mb-1">{t('detailsTitle')}</div>
                   <div className="text-[11px] mb-1">{t('baseEntropy')}: <strong>{Math.round(details.baseEntropy)} bits</strong></div>
                   <div className="text-[11px] mb-2">{t('adjustedEntropy')}: <strong>{Math.round(details.adjustedEntropy)} bits</strong></div>
-                  <div className="text-[11px] mb-1">{t('guesses')}: <strong>{formatGuesses(details.guesses)}</strong></div>
+                  <div className="text-[11px] mb-1 flex items-start justify-between gap-2">
+                    <span className="shrink-0">{t('guesses')}:</span>
+                    <strong className="font-mono text-right break-all tabular-nums">{formatGuesses(details.guesses)}</strong>
+                  </div>
                   <div className="text-[11px] text-muted-foreground mb-2">{t('detailsHint')}</div>
                   <div className="mt-2 text-[11px]">
                     {(() => {
@@ -272,8 +275,12 @@ export function StrengthMeter({ password, strength, pwnedCount, isCheckingPwned,
       )}
 
       <KAnonymityDialog isOpen={showKAnon} onClose={() => setShowKAnon(false)} />
-      <EntropyInfoDialog isOpen={showEntropyInfo} onClose={() => setShowEntropyInfo(false)} password={password} />
+      <EntropyInfoDialog
+        isOpen={showEntropyInfo}
+        onClose={() => setShowEntropyInfo(false)}
+        password={password}
+        entropyContext={entropyContext}
+      />
     </div>
   );
 }
-

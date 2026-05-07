@@ -1,6 +1,23 @@
 const CONSONANTS = 'bcdfghjklmnprstvwz';
 const VOWELS = 'aeiouy';
 
+export function getPronounceableEntropyBits(length: number = 10): number {
+  if (length <= 0) {
+    return 0;
+  }
+
+  const firstPatternConsonants = Math.ceil(length / 2);
+  const firstPatternVowels = Math.floor(length / 2);
+  const secondPatternConsonants = Math.floor(length / 2);
+  const secondPatternVowels = Math.ceil(length / 2);
+
+  const combinations =
+    Math.pow(CONSONANTS.length, firstPatternConsonants) * Math.pow(VOWELS.length, firstPatternVowels) +
+    Math.pow(CONSONANTS.length, secondPatternConsonants) * Math.pow(VOWELS.length, secondPatternVowels);
+
+  return Math.log2(combinations);
+}
+
 export function generatePronounceable(length: number = 10): string {
   const array = new Uint32Array(length);
   window.crypto.getRandomValues(array);

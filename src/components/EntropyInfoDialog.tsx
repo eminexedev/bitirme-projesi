@@ -1,14 +1,16 @@
 import { X } from 'lucide-react';
 import { useLanguage } from '../i18n/useLanguage.ts';
-import { computeEntropyDetails } from '../utils/strengthCalculator';
+import { computeEntropyDetails, type PasswordEntropyContext } from '../utils/strengthCalculator';
+import { getWordList } from '../utils/wordlist';
 
 interface EntropyInfoDialogProps {
   isOpen: boolean;
   onClose: () => void;
   password?: string;
+  entropyContext?: PasswordEntropyContext;
 }
 
-export function EntropyInfoDialog({ isOpen, onClose, password }: EntropyInfoDialogProps) {
+export function EntropyInfoDialog({ isOpen, onClose, password, entropyContext }: EntropyInfoDialogProps) {
   const { language } = useLanguage();
   if (!isOpen) return null;
 
@@ -23,13 +25,13 @@ export function EntropyInfoDialog({ isOpen, onClose, password }: EntropyInfoDial
         'The dialog also shows estimated times for different attack types (website login attempts, or offline attacks if a password is leaked). These are rough guides to compare passwords — not exact predictions.',
       ],
       bullets: [
-        'Use longer passphrases (3–4 random words) rather than short complex strings',
+        'Use longer passphrases (5–6 random words or more in this app) instead of short complex strings',
         'Avoid obvious patterns (dates, repeated blocks, keyboard rows)',
         'Mix character types (lowercase, uppercase, digits, symbols) to increase the character set',
         'Consider a password manager to store long, random passwords safely'
       ],
       exampleTitle: 'Quick example',
-      example: '8 random lowercase letters ≈ 38 bits → ~275 billion guesses. A 4-word passphrase (common words) can easily exceed that and be much safer.',
+      example: '8 random lowercase letters ≈ 38 bits → ~275 billion guesses. With this app’s built-in word list, 8 random words land around 61 bits.',
       close: 'Close',
     },
     tr: {
@@ -42,13 +44,13 @@ export function EntropyInfoDialog({ isOpen, onClose, password }: EntropyInfoDial
         'Pencere ayrıca farklı saldırı türleri için tahmini süreleri gösterir (web giriş denemeleri veya parolanın sızdırılması durumunda çevrimdışı saldırılar). Bunlar kesin sonuçlar değil, karşılaştırma amaçlı yaklaşık değerlerdir.',
       ],
       bullets: [
-        'Kısa karmaşık diziler yerine uzun parola cümleleri (3–4 rastgele kelime) kullanın',
+        'Kısa karmaşık diziler yerine daha uzun parola cümleleri kullanın (bu uygulamada 5–6 rastgele kelime ve üzeri)',
         'Açık desenlerden kaçının (tarihler, tekrarlayan bloklar, klavye sıraları)',
         'Karakter türlerini karıştırın (küçük, büyük, rakam, sembol) — havuzu büyütür',
         'Uzun, rastgele parolaları saklamak için parola yöneticisi kullanmayı düşünün'
       ],
       exampleTitle: 'Hızlı örnek',
-      example: '8 rastgele küçük harf ≈ 38 bit → ~275 milyar deneme. 4 kelimelik bir parola cümlesi bunu kolayca geçebilir ve çok daha güvenli olabilir.',
+      example: '8 rastgele küçük harf ≈ 38 bit → ~275 milyar deneme. Bu uygulamanın kelime listesiyle 8 rastgele kelime yaklaşık 61 bit eder.',
       close: 'Kapat',
     }
   } as const;
@@ -56,7 +58,7 @@ export function EntropyInfoDialog({ isOpen, onClose, password }: EntropyInfoDial
   const lang = language === 'tr' ? 'tr' : 'en';
   const data = content[lang];
 
-  const dynamic = password ? computeEntropyDetails(password) : null;
+  const dynamic = password ? computeEntropyDetails(password, undefined, entropyContext) : null;
 
   const getWidthClass = (pct: number) => {
     if (pct >= 100) return 'w-full';
@@ -109,6 +111,8 @@ export function EntropyInfoDialog({ isOpen, onClose, password }: EntropyInfoDial
   const realWorldCombinations = Math.pow(26, 8);
   const realWorldAverageGuesses = realWorldCombinations / 2;
   const realWorldEntropyBits = Math.log2(realWorldCombinations);
+  const builtInWordListSize = getWordList(language === 'tr' ? 'tr' : 'en').length;
+  const builtInPassphraseBits = 8 * Math.log2(builtInWordListSize);
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -185,7 +189,11 @@ export function EntropyInfoDialog({ isOpen, onClose, password }: EntropyInfoDial
               {([
                 { label: 'password123', bits: 20, note: language === 'tr' ? 'Çok zayıf' : 'Very weak' },
                 { label: '8 lowercase letters', bits: 38, note: language === 'tr' ? 'Zayıf' : 'Weak' },
-                { label: 'correct horse battery staple', bits: 80, note: language === 'tr' ? 'Güçlü' : 'Strong' },
+                {
+                  label: language === 'tr' ? '8 uygulama kelimesi' : '8 built-in words',
+                  bits: builtInPassphraseBits,
+                  note: language === 'tr' ? 'Güçlü' : 'Strong',
+                },
               ] as const).map((ex) => {
                 const pct = Math.min(100, Math.round((ex.bits / 100) * 100));
                 return (

@@ -7,10 +7,10 @@ import { LanguageSwitcher } from './components/LanguageSwitcher';
 import { PresetDialog } from './components/PresetDialog';
 import { useLanguage } from './i18n/useLanguage.ts';
 
-import { generatePassword, type PasswordOptions } from './utils/passwordGenerator';
-import { generatePassphrase } from './utils/passphraseGenerator';
-import { generatePronounceable } from './utils/pronounceableGenerator';
-import { calculateStrength } from './utils/strengthCalculator';
+import { generatePassword, getEffectiveCharsetSize, type PasswordOptions } from './utils/passwordGenerator';
+import { generatePassphrase, getPassphraseEntropyBits } from './utils/passphraseGenerator';
+import { generatePronounceable, getPronounceableEntropyBits } from './utils/pronounceableGenerator';
+import { calculateStrength, type PasswordEntropyContext } from './utils/strengthCalculator';
 import { checkPwned } from './utils/pwnedChecker';
 
 import { ShieldCheck, Zap, RefreshCw, Wifi, Landmark, Share2, Key } from 'lucide-react';
@@ -45,6 +45,46 @@ function generatePasswordValue(
   return generatePronounceable(options.length);
 }
 
+function buildGeneratedEntropyContext(
+  mode: Mode,
+  options: PasswordOptions,
+  wordCount: number,
+  language: 'en' | 'tr',
+): PasswordEntropyContext {
+  if (mode === 'standard') {
+    const charsetSize = getEffectiveCharsetSize(options);
+    return {
+      source: 'generated',
+      baseEntropyBits: charsetSize > 0 ? options.length * Math.log2(charsetSize) : 0,
+    };
+  }
+
+  if (mode === 'passphrase') {
+    return {
+      source: 'generated',
+      baseEntropyBits: getPassphraseEntropyBits(wordCount, language),
+    };
+  }
+
+  return {
+    source: 'generated',
+    baseEntropyBits: getPronounceableEntropyBits(options.length),
+  };
+}
+
+function generatePasswordState(
+  mode: Mode,
+  options: PasswordOptions,
+  wordCount: number,
+  separator: string,
+  language: 'en' | 'tr',
+) {
+  return {
+    password: generatePasswordValue(mode, options, wordCount, separator, language),
+    entropyContext: buildGeneratedEntropyContext(mode, options, wordCount, language),
+  };
+}
+
 export default function App() {
   const { t, language } = useLanguage();
   const [mode, setMode] = useState<Mode>('standard');
@@ -74,7 +114,7 @@ export default function App() {
   const [isWifiMode, setIsWifiMode] = useState(false);
   const sectionLabelClassName = 'text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground';
 
-  const initialPassword = generatePasswordValue('standard', {
+  const initialPasswordState = generatePasswordState('standard', {
     length: 16,
     uppercase: true,
     lowercase: true,
@@ -84,13 +124,14 @@ export default function App() {
     customExclude: '',
   }, 4, '-', language);
 
-  const [password, setPassword] = useState(initialPassword);
+  const [password, setPassword] = useState(initialPasswordState.password);
+  const [passwordEntropyContext, setPasswordEntropyContext] = useState<PasswordEntropyContext>(initialPasswordState.entropyContext);
 
-  const strength = calculateStrength(password);
+  const strength = calculateStrength(password, undefined, passwordEntropyContext);
   
   // Pwned Check State
   const [pwnedCount, setPwnedCount] = useState<number>(0);
-  const [isCheckingPwned, setIsCheckingPwned] = useState(Boolean(initialPassword));
+  const [isCheckingPwned, setIsCheckingPwned] = useState(Boolean(initialPasswordState.password));
   const [lastCheckedPassword, setLastCheckedPassword] = useState<string | null>(null);
 
   // Handle generation
@@ -100,7 +141,7 @@ export default function App() {
     selectedWordCount: number = wordCount,
     selectedSeparator: string = separator,
   ) => {
-    const newPassword = generatePasswordValue(
+    const nextPasswordState = generatePasswordState(
       selectedMode,
       selectedOptions,
       selectedWordCount,
@@ -108,9 +149,11 @@ export default function App() {
       language,
     );
 
+    const newPassword = nextPasswordState.password;
     if (!newPassword) return;
 
     setPassword(newPassword);
+    setPasswordEntropyContext(nextPasswordState.entropyContext);
     setPwnedCount(0);
     setIsCheckingPwned(true);
     setLastCheckedPassword(null);
@@ -145,6 +188,7 @@ export default function App() {
 
   const handlePasswordChange = (value: string) => {
     setPassword(value);
+    setPasswordEntropyContext({ source: 'manual' });
     setIsWifiMode(false);
     setPwnedCount(0);
     setIsCheckingPwned(Boolean(value));
@@ -248,6 +292,7 @@ export default function App() {
             <StrengthMeter
               password={password}
               strength={strength}
+              entropyContext={passwordEntropyContext}
               pwnedCount={pwnedCount}
               isCheckingPwned={isCheckingPwned}
               checkedPassword={lastCheckedPassword}
@@ -255,15 +300,110 @@ export default function App() {
             />
           </div>
 
-          <div className="flex gap-4">
-            <button
-              onClick={() => void handleGenerate()}
-              className="flex-1 bg-primary text-primary-foreground font-bold text-lg py-4 rounded-lg shadow-lg hover:shadow-primary/20 hover:-translate-y-0.5 active:translate-y-0 transition-all flex justify-center items-center gap-2 group"
-            >
-              <RefreshCw size={20} className="group-hover:rotate-180 transition-transform duration-500" />
+          {/* Password Length & Generate - Standard Mode */}
+          {mode === 'standard' && (
+            <div className="flex flex-col gap-4 w-full p-6 bg-card border border-border rounded-lg shadow-sm">
+              <div className="flex flex-col gap-3">
+                <div className="flex justify-between items-center">
+                  <label htmlFor="length-slider" className="font-medium text-foreground">{t('passwordLength')}</label>
+                  <span className="text-xl font-bold text-primary w-12 text-right">{options.length}</span>
+                </div>
+                <input
+                  id="length-slider"
+                  type="range"
+                  min="4"
+                  max="64"
+                  value={options.length}
+                  onChange={(e) => {
+                    const nextLength = parseInt(e.target.value, 10);
+                    setIsWifiMode(false);
+                    setOptions(prev => {
+                      const nextOptions = { ...prev, length: nextLength };
+                      void handleGenerate('standard', nextOptions, wordCount, separator);
+                      return nextOptions;
+                    });
+                  }}
+                  className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
+                />
+              </div>
+              <button
+                onClick={() => void handleGenerate()}
+                className="w-full bg-primary text-primary-foreground font-bold text-lg py-4 rounded-lg shadow-lg hover:shadow-primary/20 hover:-translate-y-0.5 active:translate-y-0 transition-all flex justify-center items-center gap-2 group"
+              >
+                <RefreshCw size={20} className="group-hover:rotate-180 transition-transform duration-500" />
                 {t('generateButton')}
-            </button>
-          </div>
+              </button>
+            </div>
+          )}
+
+          {/* Word Count & Generate - Passphrase Mode */}
+          {mode === 'passphrase' && (
+            <div className="flex flex-col gap-4 w-full p-6 bg-card border border-border rounded-lg shadow-sm">
+              <div className="flex flex-col gap-3">
+                <div className="flex justify-between items-center">
+                  <label htmlFor="word-count-main" className="font-medium text-foreground">{t('wordCount')}</label>
+                  <span className="text-xl font-bold text-primary w-12 text-right">{wordCount}</span>
+                </div>
+                <input
+                  id="word-count-main"
+                  type="range"
+                  min="3"
+                  max="12"
+                  value={wordCount}
+                  onChange={(e) => {
+                    const nextWordCount = parseInt(e.target.value, 10);
+                    setWordCount(nextWordCount);
+                    setIsWifiMode(false);
+                    void handleGenerate('passphrase', options, nextWordCount, separator);
+                  }}
+                  className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
+                />
+              </div>
+              <button
+                onClick={() => void handleGenerate()}
+                className="w-full bg-primary text-primary-foreground font-bold text-lg py-4 rounded-lg shadow-lg hover:shadow-primary/20 hover:-translate-y-0.5 active:translate-y-0 transition-all flex justify-center items-center gap-2 group"
+              >
+                <RefreshCw size={20} className="group-hover:rotate-180 transition-transform duration-500" />
+                {t('generateButton')}
+              </button>
+            </div>
+          )}
+
+          {/* Password Length & Generate - Pronounceable Mode */}
+          {mode === 'pronounceable' && (
+            <div className="flex flex-col gap-4 w-full p-6 bg-card border border-border rounded-lg shadow-sm">
+              <div className="flex flex-col gap-3">
+                <div className="flex justify-between items-center">
+                  <label htmlFor="length-slider-pronounceable" className="font-medium text-foreground">{t('passwordLength')}</label>
+                  <span className="text-xl font-bold text-primary w-12 text-right">{options.length}</span>
+                </div>
+                <input
+                  id="length-slider-pronounceable"
+                  type="range"
+                  min="4"
+                  max="32"
+                  value={options.length}
+                  onChange={(e) => {
+                    const nextLength = parseInt(e.target.value, 10);
+                    setIsWifiMode(false);
+                    setOptions(prev => {
+                      const nextOptions = { ...prev, length: nextLength };
+                      void handleGenerate('pronounceable', nextOptions, wordCount, separator);
+                      return nextOptions;
+                    });
+                  }}
+                  className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
+                />
+              </div>
+              <button
+                onClick={() => void handleGenerate()}
+                className="w-full bg-primary text-primary-foreground font-bold text-lg py-4 rounded-lg shadow-lg hover:shadow-primary/20 hover:-translate-y-0.5 active:translate-y-0 transition-all flex justify-center items-center gap-2 group"
+              >
+                <RefreshCw size={20} className="group-hover:rotate-180 transition-transform duration-500" />
+                {t('generateButton')}
+              </button>
+            </div>
+          )}
 
           {/* Mode Selector */}
           <div className="flex bg-secondary p-1 rounded-lg">
@@ -299,29 +439,6 @@ export default function App() {
 
           {mode === 'passphrase' && (
             <div className="flex flex-col gap-6 w-full p-6 bg-card border border-border rounded-lg shadow-sm">
-              <div className="flex flex-col gap-3">
-                <div className="flex justify-between items-center">
-                  <label htmlFor="word-count" className={sectionLabelClassName}>{t('wordCount')}</label>
-                  <span className="text-sm font-bold text-primary w-12 text-right tracking-wide">{wordCount}</span>
-                </div>
-                <input
-                  id="word-count"
-                  type="range"
-                  min="3"
-                  max="12"
-                  value={wordCount}
-                  onChange={(e) => {
-                    const nextWordCount = parseInt(e.target.value, 10);
-                    setWordCount(nextWordCount);
-                    setIsWifiMode(false);
-
-                    if (mode === 'passphrase') {
-                      void handleGenerate('passphrase', options, nextWordCount, separator);
-                    }
-                  }}
-                  className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
-                />
-              </div>
               <div className="flex flex-col gap-2">
                 <label htmlFor="separator" className={sectionLabelClassName}>{t('separator')}</label>
                 <select
@@ -345,33 +462,6 @@ export default function App() {
 
           {mode === 'pronounceable' && (
              <div className="flex flex-col gap-6 w-full p-6 bg-card border border-border rounded-lg shadow-sm">
-              <div className="flex flex-col gap-3">
-                <div className="flex justify-between items-center">
-                  <label htmlFor="pronounceable-length" className={sectionLabelClassName}>{t('passwordLength')}</label>
-                  <span className="text-sm font-bold text-primary w-12 text-right tracking-wide">{options.length}</span>
-                </div>
-                <input
-                  id="pronounceable-length"
-                  type="range"
-                  min="4"
-                  max="32"
-                  value={options.length}
-                  onChange={(e) => {
-                    const nextLength = parseInt(e.target.value, 10);
-                    setIsWifiMode(false);
-                    setOptions(prev => {
-                      const nextOptions = { ...prev, length: nextLength };
-
-                      if (mode === 'pronounceable') {
-                        void handleGenerate('pronounceable', nextOptions, wordCount, separator);
-                      }
-
-                      return nextOptions;
-                    });
-                  }}
-                  className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
-                />
-              </div>
               <p className="text-sm text-muted-foreground">
                 {t('pronounceableDesc')}
               </p>

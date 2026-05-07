@@ -1,5 +1,13 @@
 import { getWordList, type WordlistLanguage } from './wordlist';
 
+export function getPassphraseEntropyBits(
+  wordCount: number = 4,
+  language: WordlistLanguage = 'en',
+): number {
+  const wordList = getWordList(language);
+  return wordCount * Math.log2(wordList.length);
+}
+
 export function generatePassphrase(
   wordCount: number = 4,
   separator: string = '-',

@@ -16,7 +16,7 @@ const CHAR_SETS = {
   similarChars: 'il1Lo0O',
 };
 
-export function generatePassword(options: PasswordOptions): string {
+export function getEffectiveCharset(options: PasswordOptions): string {
   let charset = '';
   if (options.uppercase) charset += CHAR_SETS.uppercase;
   if (options.lowercase) charset += CHAR_SETS.lowercase;
@@ -27,19 +27,28 @@ export function generatePassword(options: PasswordOptions): string {
     return '';
   }
 
-  // Remove exclusions
   let finalCharset = charset;
   if (options.excludeSimilar) {
     finalCharset = finalCharset.split('').filter(c => !CHAR_SETS.similarChars.includes(c)).join('');
   }
-  
+
   if (options.customExclude) {
     const customExcludeSet = new Set(options.customExclude.split(''));
     finalCharset = finalCharset.split('').filter(c => !customExcludeSet.has(c)).join('');
   }
 
+  return finalCharset;
+}
+
+export function getEffectiveCharsetSize(options: PasswordOptions): number {
+  return getEffectiveCharset(options).length;
+}
+
+export function generatePassword(options: PasswordOptions): string {
+  const finalCharset = getEffectiveCharset(options);
+
   if (finalCharset === '') {
-      return '';
+    return '';
   }
 
   const charsetArray = finalCharset.split('');

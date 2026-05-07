@@ -27,6 +27,11 @@ export interface StrengthOptions {
   email?: string;
 }
 
+export interface PasswordEntropyContext {
+  source: 'manual' | 'generated';
+  baseEntropyBits?: number;
+}
+
 // Common patterns that weaken passwords
 const COMMON_PATTERNS = [
   'password', 'pass123', '123456', '12345678', 'qwerty', 'abc123',
@@ -86,27 +91,38 @@ function hasRepetitions(password: string): number {
   return repetitionCount;
 }
 
-// Detect consecutive repeating patterns (e.g., "121212", "abab", "123123")
+// Detect consecutive repeating patterns (e.g., "1212", "abab", "123123")
 function hasConsecutiveRepeatingPatterns(password: string): number {
   let penaltyCount = 0;
   const lowerPassword = password.toLowerCase();
 
-  // Check for 2-character repeating patterns (min 2 repetitions = 4 chars total)
-  for (let patternLen = 1; patternLen <= Math.floor(password.length / 4); patternLen++) {
-    for (let i = 0; i <= password.length - patternLen * 4; i++) {
+  for (let i = 0; i < lowerPassword.length - 3;) {
+    let matchedPattern = false;
+    const maxPatternLength = Math.floor((lowerPassword.length - i) / 2);
+
+    for (let patternLen = 2; patternLen <= maxPatternLength; patternLen++) {
       const pattern = lowerPassword.substring(i, i + patternLen);
-      let isRepeating = true;
+      let repeatCount = 1;
+      let cursor = i + patternLen;
 
-      for (let j = i + patternLen; j < i + patternLen * 4; j += patternLen) {
-        if (lowerPassword.substring(j, j + patternLen) !== pattern) {
-          isRepeating = false;
-          break;
-        }
+      while (
+        cursor + patternLen <= lowerPassword.length &&
+        lowerPassword.substring(cursor, cursor + patternLen) === pattern
+      ) {
+        repeatCount += 1;
+        cursor += patternLen;
       }
 
-      if (isRepeating) {
-        penaltyCount += 3;
+      if (repeatCount >= 2) {
+        penaltyCount += 3 + (repeatCount - 2);
+        i = cursor;
+        matchedPattern = true;
+        break;
       }
+    }
+
+    if (!matchedPattern) {
+      i += 1;
     }
   }
 
@@ -227,62 +243,90 @@ export async function checkPwnedPassword(password: string): Promise<boolean> {
   }
 }
 
-// Calculate character diversity bonus (only for passwords >= 8 chars to avoid double-counting)
-function getCharacterDiversityBonus(password: string): number {
-  // Don't apply diversity bonus to very short passwords (< 8 chars)
-  // as entropy already accounts for pool size increase
-  if (password.length < 8) return 0;
+function getObservedPoolSize(password: string): number {
+  let poolSize = 0;
+  if (/[A-Z]/.test(password)) poolSize += 26;
+  if (/[a-z]/.test(password)) poolSize += 26;
+  if (/[0-9]/.test(password)) poolSize += 10;
+  if (/[^A-Za-z0-9]/.test(password)) poolSize += 32;
 
-  let bonus = 0;
-  const hasLower = /[a-z]/.test(password);
-  const hasUpper = /[A-Z]/.test(password);
-  const hasDigits = /[0-9]/.test(password);
-  const hasSymbols = /[^A-Za-z0-9]/.test(password);
-
-  if (hasLower) bonus += 1;
-  if (hasUpper) bonus += 1;
-  if (hasDigits) bonus += 1;
-  if (hasSymbols) bonus += 1;
-
-  return bonus * 5; // 5 bits per diversity category
+  return poolSize || 1;
 }
 
-export function calculateStrength(password: string, options?: StrengthOptions): StrengthResult {
-  if (!password) {
-    return { score: 0, label: 'Weak', color: 'bg-destructive', warnings: [] };
+function getBaseEntropy(password: string, entropyContext?: PasswordEntropyContext): number {
+  if (entropyContext?.source === 'generated' && typeof entropyContext.baseEntropyBits === 'number') {
+    return Math.max(0, entropyContext.baseEntropyBits);
   }
 
+  return password.length * Math.log2(getObservedPoolSize(password));
+}
+
+function getPatternEntropyCap(password: string, warningSet: Set<StrengthWarningCode>): number | null {
+  let cap: number | null = null;
+
+  const applyCap = (nextCap: number) => {
+    cap = cap === null ? nextCap : Math.min(cap, nextCap);
+  };
+
+  if (warningSet.has('shortLength')) applyCap(18);
+  if (warningSet.has('datePattern')) applyCap(16);
+  if (warningSet.has('yearPattern')) applyCap(18);
+  if (warningSet.has('personalInfo')) applyCap(18);
+
+  if (
+    warningSet.has('commonPattern') ||
+    warningSet.has('keyboardPattern') ||
+    warningSet.has('shiftPattern')
+  ) {
+    applyCap(password.length <= 12 ? 20 : 45);
+  }
+
+  return cap;
+}
+
+function getStrengthLabel(adjustedEntropy: number, warningSet: Set<StrengthWarningCode>): StrengthResult {
+  if (warningSet.has('shortLength')) {
+    return { score: 0, label: 'Weak', color: 'bg-destructive', warnings: [...warningSet] };
+  }
+
+  if (adjustedEntropy < 40) {
+    return { score: 1, label: 'Weak', color: 'bg-destructive', warnings: [...warningSet] };
+  }
+
+  if (adjustedEntropy < 60) {
+    return { score: 2, label: 'Medium', color: 'bg-yellow-500', warnings: [...warningSet] };
+  }
+
+  if (adjustedEntropy < 80) {
+    return { score: 3, label: 'Strong', color: 'bg-green-500', warnings: [...warningSet] };
+  }
+
+  return { score: 4, label: 'Very Strong', color: 'bg-primary', warnings: [...warningSet] };
+}
+
+function analyzePassword(password: string, options?: StrengthOptions, entropyContext?: PasswordEntropyContext) {
   const warningSet = new Set<StrengthWarningCode>();
 
   // NIST Guideline: Minimum 8 characters (< 8 is inherently weak)
   if (password.length < 8) {
     warningSet.add('shortLength');
-    return { score: 0, label: 'Weak', color: 'bg-destructive', warnings: [...warningSet] };
   }
 
-  // Check for date patterns - always weak
   if (hasDatePatterns(password)) {
     warningSet.add('datePattern');
-    return { score: 1, label: 'Weak', color: 'bg-destructive', warnings: [...warningSet] };
   }
 
-  // Check for year suffixes (e.g., Fenerbahce1907, Istanbul2024)
   if (hasYearSuffix(password)) {
     warningSet.add('yearPattern');
-    return { score: 1, label: 'Weak', color: 'bg-destructive', warnings: [...warningSet] };
   }
 
-  // Check for contextual user data violation
   if (checkUserContextViolation(password, options)) {
     warningSet.add('personalInfo');
-    return { score: 1, label: 'Weak', color: 'bg-destructive', warnings: [...warningSet] };
   }
 
-  // Normalize leetspeak and check for common patterns
   const normalizedPassword = normalizeLeetspeak(password);
   const lowerPassword = password.toLowerCase();
 
-  // Check common patterns in both original and normalized form
   const hasCommon = COMMON_PATTERNS.some(pattern => 
     normalizedPassword.includes(pattern) || lowerPassword.includes(pattern)
   );
@@ -299,26 +343,8 @@ export function calculateStrength(password: string, options?: StrengthOptions): 
   if (hasKeyboard) warningSet.add('keyboardPattern');
   if (hasShift) warningSet.add('shiftPattern');
 
-  if (hasCommon || hasKeyboard || hasShift) {
-    if (password.length <= 12) {
-      return { score: 1, label: 'Weak', color: 'bg-destructive', warnings: [...warningSet] };
-    }
-    // Longer passwords with weak patterns = Medium
-    return { score: 2, label: 'Medium', color: 'bg-yellow-500', warnings: [...warningSet] };
-  }
+  const baseEntropy = getBaseEntropy(password, entropyContext);
 
-  let poolSize = 0;
-  if (/[A-Z]/.test(password)) poolSize += 26;
-  if (/[a-z]/.test(password)) poolSize += 26;
-  if (/[0-9]/.test(password)) poolSize += 10;
-  if (/[^A-Za-z0-9]/.test(password)) poolSize += 32;
-
-  if (poolSize === 0) poolSize = 1;
-
-  // Calculate base entropy
-  let entropy = password.length * Math.log2(poolSize);
-
-  // Apply penalties for weak patterns
   const sequencePenalty = hasSequences(password) * 5; // 5 bits per sequence found
   const repetitionPenalty = hasRepetitions(password) * 4; // 4 bits per repetition found
   const consecutiveRepeatingPenalty = hasConsecutiveRepeatingPatterns(password); // Extra penalty for repeating patterns
@@ -327,42 +353,43 @@ export function calculateStrength(password: string, options?: StrengthOptions): 
   if (repetitionPenalty > 0) warningSet.add('repetitionPattern');
   if (consecutiveRepeatingPenalty > 0) warningSet.add('repeatingBlockPattern');
 
-  entropy -= sequencePenalty + repetitionPenalty + consecutiveRepeatingPenalty;
+  let adjustedEntropy = Math.max(
+    0,
+    baseEntropy - sequencePenalty - repetitionPenalty - consecutiveRepeatingPenalty
+  );
 
-  // Apply bonus for character diversity (only for passwords >= 8 chars)
-  const diversityBonus = getCharacterDiversityBonus(password);
-  entropy += diversityBonus;
-
-  // Determine strength based on adjusted entropy
-  if (entropy < 40) {
-    return { score: 1, label: 'Weak', color: 'bg-destructive', warnings: [...warningSet] };
-  } else if (entropy < 60) {
-    return { score: 2, label: 'Medium', color: 'bg-yellow-500', warnings: [...warningSet] };
-  } else if (entropy < 80) {
-    return { score: 3, label: 'Strong', color: 'bg-green-500', warnings: [...warningSet] };
-  } else {
-    return { score: 4, label: 'Very Strong', color: 'bg-primary', warnings: [...warningSet] };
+  const entropyCap = getPatternEntropyCap(password, warningSet);
+  if (entropyCap !== null) {
+    adjustedEntropy = Math.min(adjustedEntropy, entropyCap);
   }
+
+  return {
+    baseEntropy,
+    adjustedEntropy,
+    warningSet,
+  };
+}
+
+export function calculateStrength(
+  password: string,
+  options?: StrengthOptions,
+  entropyContext?: PasswordEntropyContext
+): StrengthResult {
+  if (!password) {
+    return { score: 0, label: 'Weak', color: 'bg-destructive', warnings: [] };
+  }
+
+  const { adjustedEntropy, warningSet } = analyzePassword(password, options, entropyContext);
+  return getStrengthLabel(adjustedEntropy, warningSet);
 }
 
 // Compute entropy details and estimated crack times for various attacker speeds
-export function computeEntropyDetails(password: string) {
-  let poolSize = 0;
-  if (/[A-Z]/.test(password)) poolSize += 26;
-  if (/[a-z]/.test(password)) poolSize += 26;
-  if (/[0-9]/.test(password)) poolSize += 10;
-  if (/[^A-Za-z0-9]/.test(password)) poolSize += 32;
-  if (poolSize === 0) poolSize = 1;
-
-  const baseEntropy = password.length * Math.log2(poolSize);
-
-  // Apply penalties mirroring calculateStrength
-  const sequencePenalty = hasSequences(password) * 5;
-  const repetitionPenalty = hasRepetitions(password) * 4;
-  const consecutiveRepeatingPenalty = hasConsecutiveRepeatingPatterns(password);
-  const diversityBonus = getCharacterDiversityBonus(password);
-
-  const adjustedEntropy = Math.max(0, baseEntropy - sequencePenalty - repetitionPenalty - consecutiveRepeatingPenalty + diversityBonus);
+export function computeEntropyDetails(
+  password: string,
+  options?: StrengthOptions,
+  entropyContext?: PasswordEntropyContext
+) {
+  const { baseEntropy, adjustedEntropy } = analyzePassword(password, options, entropyContext);
 
   // Estimate guesses: 2^entropy
   const guesses = Math.pow(2, adjustedEntropy);
