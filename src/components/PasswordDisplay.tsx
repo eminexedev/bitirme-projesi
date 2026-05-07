@@ -31,7 +31,9 @@ export function PasswordDisplay({ password, onQrClick, showQrButton = true }: Pa
         resetTimerRef.current = null;
       }, 2000);
     } catch (err) {
-      console.error('Failed to copy', err);
+      // tr
+      console.error('Kopyalama başarısız', err);
+      console.error('Copy failed', err);
     }
   };
 

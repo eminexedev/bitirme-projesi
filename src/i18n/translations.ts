@@ -211,7 +211,7 @@ export const translations = {
     guesses: 'Tahmini deneme sayısı',
     showDetails: 'Daha fazla göster',
     hideDetails: 'Daha az göster',
-    detailsTitle: 'Teknik detaylar (isteğe bağlı)',
+    detailsTitle: 'Teknik detaylar',
     baseEntropy: 'Ham karmaşıklık puanı',
     adjustedEntropy: 'Son puan (zayıf desen cezaları sonrası)',
     detailsHint: 'Puan ve süre ne kadar yüksekse şifre o kadar güvenlidir.',

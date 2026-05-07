@@ -26,9 +26,9 @@ export function WelcomeDialog({ isOpen, onClose, onAcknowledge }: WelcomeDialogP
     tr: {
       title: 'SecureKey’e Hoş Geldiniz',
       paragraphs: [
-        'SecureKey, güçlü ve benzersiz şifreleri tarayıcınızda yerel olarak oluşturmanıza yardımcı olur. Şifreler cihazınızda üretilir ve bizim sunucularımıza gönderilmez.',
-        'İsteğe bağlı bir ihlal kontrolü için k-anonymity adlı gizliliği koruyan bir yöntem kullanıyoruz (yalnızca kısa bir hash ön eki gönderilir — sunucu tam parolanızı göremez).',
-        'Kontrol sizde: Şifrelerinizi depolamıyor veya iletmiyoruz. Önemli hesaplar için bir parola yöneticisi kullanın ve mümkünse çok faktörlü kimlik doğrulamayı etkinleştirin.'
+        'SecureKey, güçlü ve benzersiz şifreleri tarayıcınızda yerel olarak oluşturmanıza yardımcı olur. Şifreler cihazınızda üretilir ve sunucularımıza gönderilmez.',
+        'İsteğe bağlı bir ihlal kontrolü için k-anonymity adlı gizliliği koruyan bir yöntem kullanıyoruz (yalnızca kısa bir hash ön eki gönderilir.)',
+        'Şifrelerinizi depolamıyor veya iletmiyoruz. Önemli hesaplar için bir parola yöneticisi kullanın ve mümkünse çok faktörlü kimlik doğrulamayı etkinleştirin.'
       ],
       acknowledge: 'Okudum ve anladım',
       close: 'Kapat'

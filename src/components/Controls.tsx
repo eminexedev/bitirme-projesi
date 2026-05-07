@@ -38,22 +38,6 @@ export function Controls({ options, setOptions, onOptionsChange }: ControlsProps
 
   return (
     <div className="flex flex-col gap-6 w-full p-6 bg-card border border-border rounded-lg shadow-sm">
-      <div className="flex flex-col gap-3">
-        <div className="flex justify-between items-center">
-          <label htmlFor="length-slider" className="font-medium text-foreground">{t('passwordLength')}</label>
-          <span className="text-xl font-bold text-primary w-12 text-right">{options.length}</span>
-        </div>
-        <input
-          id="length-slider"
-          type="range"
-          min="4"
-          max="64"
-          value={options.length}
-          onChange={(e) => updateOptions((prev) => ({ ...prev, length: parseInt(e.target.value, 10) }))}
-          className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
-        />
-      </div>
-
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <CheckboxOption
           id="uppercase"
