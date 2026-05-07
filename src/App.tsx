@@ -2,7 +2,6 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { PasswordDisplay } from './components/PasswordDisplay';
 import { StrengthMeter } from './components/StrengthMeter';
 import { Controls } from './components/Controls';
-import { PasswordHistory } from './components/PasswordHistory';
 import { ThemeSwitcher } from './components/ThemeSwitcher';
 import { LanguageSwitcher } from './components/LanguageSwitcher';
 import { PresetDialog } from './components/PresetDialog';
@@ -22,35 +21,11 @@ import { WifiQrDialog } from './components/WifiQrDialog';
 type Mode = 'standard' | 'passphrase' | 'pronounceable';
 type PresetType = 'wifi' | 'banking' | 'social' | 'admin' | null;
 
-interface PasswordHistoryItem {
-  password: string;
-  preset?: PresetType;
-}
-
 const MODE_LABEL_KEYS: Record<Mode, 'standardModeLabel' | 'passphraseModeLabel' | 'pronounceableModeLabel'> = {
   standard: 'standardModeLabel',
   passphrase: 'passphraseModeLabel',
   pronounceable: 'pronounceableModeLabel',
 };
-
-function loadHistory(): PasswordHistoryItem[] {
-  const saved = localStorage.getItem('passwordHistory');
-  if (!saved) return [];
-
-  try {
-    const parsed = JSON.parse(saved);
-    if (!Array.isArray(parsed)) return [];
-    
-    // Eski format uyumluluğu: string[] -> PasswordHistoryItem[]
-    return parsed.map(item => 
-      typeof item === 'string' 
-        ? { password: item } 
-        : item
-    );
-  } catch {
-    return [];
-  }
-}
 
 function generatePasswordValue(
   mode: Mode,
@@ -85,7 +60,6 @@ export default function App() {
   const [wordCount, setWordCount] = useState(4);
   const [separator, setSeparator] = useState('-');
 
-  const [history, setHistory] = useState<PasswordHistoryItem[]>(loadHistory);
   const [selectedPreset, setSelectedPreset] = useState<PresetType>(null);
   const [showPresetDialog, setShowPresetDialog] = useState(false);
   const [showWelcome, setShowWelcome] = useState<boolean>(() => {
@@ -125,8 +99,6 @@ export default function App() {
     selectedOptions: PasswordOptions = options,
     selectedWordCount: number = wordCount,
     selectedSeparator: string = separator,
-    saveToHistory: boolean = true,
-    preset: PresetType = null,
   ) => {
     const newPassword = generatePasswordValue(
       selectedMode,
@@ -142,18 +114,6 @@ export default function App() {
     setPwnedCount(0);
     setIsCheckingPwned(true);
     setLastCheckedPassword(null);
-    
-    // Save to history
-    if (saveToHistory) {
-      setHistory(prev => {
-        const newItem: PasswordHistoryItem = { password: newPassword, preset };
-        const filtered = prev.filter(p => p.password !== newPassword);
-        const newHistory = [newItem, ...filtered].slice(0, 5);
-        localStorage.setItem('passwordHistory', JSON.stringify(newHistory));
-        return newHistory;
-      });
-    }
-
   }, [mode, options, wordCount, separator, language]);
 
   // Presets
@@ -179,7 +139,7 @@ export default function App() {
     setMode('standard');
     setOptions(nextOptions);
     setIsWifiMode(preset === 'wifi');
-    void handleGenerate('standard', nextOptions, wordCount, separator, true, preset);
+    void handleGenerate('standard', nextOptions, wordCount, separator);
     setShowPresetDialog(false);
   };
 
@@ -218,11 +178,6 @@ export default function App() {
       window.clearTimeout(timer);
     };
   }, [password]);
-
-  const clearHistory = () => {
-    setHistory([]);
-    localStorage.removeItem('passwordHistory');
-  };
 
   return (
     <div className="min-h-screen p-4 md:p-8 flex flex-col items-center selection:bg-primary/30">
@@ -337,7 +292,7 @@ export default function App() {
                setOptions={setOptions}
                onOptionsChange={(nextOptions) => {
                  setIsWifiMode(false);
-                 void handleGenerate('standard', nextOptions, wordCount, separator, false);
+                 void handleGenerate('standard', nextOptions, wordCount, separator);
                }}
              />
           )}
@@ -361,7 +316,7 @@ export default function App() {
                     setIsWifiMode(false);
 
                     if (mode === 'passphrase') {
-                      void handleGenerate('passphrase', options, nextWordCount, separator, false);
+                      void handleGenerate('passphrase', options, nextWordCount, separator);
                     }
                   }}
                   className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
@@ -408,7 +363,7 @@ export default function App() {
                       const nextOptions = { ...prev, length: nextLength };
 
                       if (mode === 'pronounceable') {
-                        void handleGenerate('pronounceable', nextOptions, wordCount, separator, false);
+                        void handleGenerate('pronounceable', nextOptions, wordCount, separator);
                       }
 
                       return nextOptions;
@@ -425,7 +380,7 @@ export default function App() {
 
         </div>
 
-        {/* Right Column - Presets & History */}
+        {/* Right Column - Presets */}
         <div className="flex flex-col gap-6">
           
           <div className="bg-card border border-border p-6 rounded-lg shadow-sm">
@@ -437,8 +392,6 @@ export default function App() {
                <PresetButton icon={<Key size={16}/>} label={t('admin')} onClick={() => handlePresetClick('admin')} />
              </div>
           </div>
-
-          <PasswordHistory history={history} clearHistory={clearHistory} />
 
           <div className="bg-card border border-border p-4 rounded-lg shadow-sm text-sm text-muted-foreground">
              <div className="flex items-center gap-2 mb-2 text-foreground font-semibold">

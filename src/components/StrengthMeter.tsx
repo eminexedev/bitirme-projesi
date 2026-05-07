@@ -7,6 +7,7 @@ import { KAnonymityDialog } from './KAnonymityDialog';
 import { useLanguage } from '../i18n/useLanguage.ts';
 import { translations } from '../i18n/translations.ts';
 import { type PasswordOptions } from '../utils/passwordGenerator';
+import { EntropyInfoDialog } from './EntropyInfoDialog';
 
 const strengthTranslationKeyMap: Record<Strength, keyof typeof translations.en> = {
   Weak: 'weak',
@@ -27,7 +28,8 @@ interface StrengthMeterProps {
 
 export function StrengthMeter({ password, strength, pwnedCount, isCheckingPwned, checkedPassword, options }: StrengthMeterProps) {
   const bars = Array.from({ length: 4 });
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const [showEntropyInfo, setShowEntropyInfo] = useState(false);
   const strengthTranslationKey = strengthTranslationKeyMap[strength.label];
   const hasCheckedCurrentPassword = checkedPassword === password;
   const labelClassName = 'text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground';
@@ -110,40 +112,71 @@ export function StrengthMeter({ password, strength, pwnedCount, isCheckingPwned,
       {password && (
         (() => {
           const details = computeEntropyDetails(password);
+          const unitText = (value: number, unit: 'second' | 'minute' | 'hour' | 'day' | 'month' | 'year') => {
+            const suffix = value === 1 ? 'Singular' : 'Plural';
+            return t(`${unit}Unit${suffix}` as keyof typeof translations.en);
+          };
+
           const fmt = (s: number) => {
-            if (!isFinite(s) || s > 3600 * 24 * 365 * 1000) return t('veryLong');
-            const sec = Math.round(s);
-            if (sec < 1) return '<1s';
-            const minutes = Math.floor(sec / 60);
-            if (minutes < 1) return `${sec}s`;
-            const hours = Math.floor(minutes / 60);
-            if (hours < 1) return `${minutes}m`;
-            const days = Math.floor(hours / 24);
-            if (days < 1) return `${hours}h`;
-            const years = (days / 365).toFixed(1);
-            return `${years}y`;
+            const sec = Math.max(0, Math.round(s));
+            const minute = 60;
+            const hour = minute * 60;
+            const day = hour * 24;
+            const year = day * 365;
+
+            if (!isFinite(sec) || sec > year * 1000) return language === 'tr' ? '1000+ yıl' : '1000+ years';
+            if (sec < 1) return t('lessThanOneSecond');
+            if (sec < minute) return `${sec} ${unitText(sec, 'second')}`;
+
+            const minutes = Math.round(sec / minute);
+            if (minutes < 60) return `${minutes} ${unitText(minutes, 'minute')}`;
+
+            const hours = Math.round(sec / hour);
+            if (hours < 24) return `${hours} ${unitText(hours, 'hour')}`;
+
+            const days = Math.round(sec / day);
+            if (days < 30) return `${days} ${unitText(days, 'day')}`;
+
+            const months = Math.round(sec / (day * 30));
+            if (months < 24) return `${months} ${unitText(months, 'month')}`;
+
+            const years = Math.round(sec / year);
+            return `${years} ${unitText(years, 'year')}`;
           };
 
           return (
             <div className="mt-2 text-xs text-muted-foreground">
-              <div className="font-medium">{t('entropy')}: {Math.round(details.adjustedEntropy)} bits</div>
+              <div className="font-medium">{t('crackSummaryTitle')}</div>
 
               <div className="flex items-center justify-between gap-4 mt-1">
-                <div className="text-[11px] text-muted-foreground">{t('guesses')}: <strong>{formatGuesses(details.guesses)}</strong></div>
-                <button
-                  onClick={() => setShowDetails(s => !s)}
-                  className="text-[11px] text-primary underline decoration-primary/60 underline-offset-2 hover:decoration-primary/80 focus:outline-none"
-                >
-                  {showDetails ? t('hideDetails') : t('showDetails')}
-                </button>
+                <div className="text-[11px] text-muted-foreground">{t('overallCrackEstimate')}: <strong>{fmt(details.crackTimes.offline_gpu)}</strong></div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowEntropyInfo(true)}
+                    title={t('entropyHelp')}
+                    className="text-[11px] text-muted-foreground hover:text-foreground focus:outline-none"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-info">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <line x1="12" y1="16" x2="12" y2="12"></line>
+                      <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => setShowDetails(s => !s)}
+                    className="text-[11px] text-primary underline decoration-primary/60 underline-offset-2 hover:decoration-primary/80 focus:outline-none"
+                  >
+                    {showDetails ? t('hideDetails') : t('showDetails')}
+                  </button>
+                </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 mt-2 text-[11px]">
-                <div>{t('attack_online_throttled')}: <strong>{fmt(details.crackTimes.online_throttled)}</strong></div>
-                <div>{t('attack_online_unthrottled')}: <strong>{fmt(details.crackTimes.online_unthrottled)}</strong></div>
-                <div>{t('attack_offline_slow')}: <strong>{fmt(details.crackTimes.offline_slow)}</strong></div>
-                <div>{t('attack_offline_gpu')}: <strong>{fmt(details.crackTimes.offline_gpu)}</strong></div>
-                <div>{t('attack_offline_highend')}: <strong>{fmt(details.crackTimes.offline_highend)}</strong></div>
+              <div className="grid grid-cols-1 gap-1 mt-2 text-[11px]">
+                <div>{t('webAttackLimitedEstimate')}: <strong>{fmt(details.crackTimes.online_throttled)}</strong></div>
+                <div>{t('webAttackManyEstimate')}: <strong>{fmt(details.crackTimes.online_unthrottled)}</strong></div>
+                <div>{t('leakedDataBasicEstimate')}: <strong>{fmt(details.crackTimes.offline_slow)}</strong></div>
+                <div>{t('leakedDataGpuEstimate')}: <strong>{fmt(details.crackTimes.offline_gpu)}</strong></div>
+                <div>{t('leakedDataClusterEstimate')}: <strong>{fmt(details.crackTimes.offline_highend)}</strong></div>
               </div>
 
               {showDetails && (
@@ -152,6 +185,7 @@ export function StrengthMeter({ password, strength, pwnedCount, isCheckingPwned,
                   <div className="text-[11px] mb-1">{t('baseEntropy')}: <strong>{Math.round(details.baseEntropy)} bits</strong></div>
                   <div className="text-[11px] mb-2">{t('adjustedEntropy')}: <strong>{Math.round(details.adjustedEntropy)} bits</strong></div>
                   <div className="text-[11px] mb-1">{t('guesses')}: <strong>{formatGuesses(details.guesses)}</strong></div>
+                  <div className="text-[11px] text-muted-foreground mb-2">{t('detailsHint')}</div>
                   <div className="mt-2 text-[11px]">
                     {(() => {
                       const labelKeyMap: Record<string, keyof typeof translations.en> = {
@@ -238,6 +272,7 @@ export function StrengthMeter({ password, strength, pwnedCount, isCheckingPwned,
       )}
 
       <KAnonymityDialog isOpen={showKAnon} onClose={() => setShowKAnon(false)} />
+      <EntropyInfoDialog isOpen={showEntropyInfo} onClose={() => setShowEntropyInfo(false)} password={password} />
     </div>
   );
 }
