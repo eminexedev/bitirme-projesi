@@ -1,5 +1,6 @@
 export type Strength = 'Weak' | 'Medium' | 'Strong' | 'Very Strong' | 'Compromised';
 
+// Parola güç değerlendirmesi için uyarı kodları
 export type StrengthWarningCode =
   | 'shortLength'
   | 'datePattern'
@@ -13,13 +14,14 @@ export type StrengthWarningCode =
   | 'repeatingBlockPattern';
 
 export interface StrengthResult {
-  score: number; // 0 to 4
+  score: number; // 0 ile 4 arası puanlama (0: Weak, 1: Weak, 2: Medium, 3: Strong, 4: Very Strong)
   label: Strength;
   color: string;
-  compromised?: boolean; // HIBP check result
+  compromised?: boolean; // HIBP kontrol sonucu
   warnings?: StrengthWarningCode[];
 }
 
+// Parola güç değerlendirmesi için ek seçenekler (kullanıcı bağlamı)
 export interface StrengthOptions {
   username?: string;
   firstName?: string;
@@ -32,41 +34,41 @@ export interface PasswordEntropyContext {
   baseEntropyBits?: number;
 }
 
-// Common patterns that weaken passwords
+// Parolaları zayıflatan yaygın kalıplar
 const COMMON_PATTERNS = [
   'password', 'pass123', '123456', '12345678', 'qwerty', 'abc123',
   'password123', 'letmein', 'welcome', 'monkey', 'dragon', 'master',
   '111111', '123123', 'admin', 'root', 'passw0rd', 'shadow',
 ];
 
-// Keyboard patterns
+// Klavye kalıpları
 const KEYBOARD_PATTERNS = [
   'qwerty', 'asdfgh', 'zxcvbn', 'qazwsx', 'qweasd', 'asdfghjkl',
   '1234567890', 'qwertyuiop', 'qwertyu', 'asdfg',
 ];
 
-// Shift-key variations of keyboard patterns
+// Klavye kalıplarının Shift tuşlu varyasyonları
 const SHIFT_PATTERNS = [
   '!@#$%', '!@#$%^&*()', '@werty', 'QWERTY', 'ASDFGH',
   '~!@#$%^', 'qweasdzxc', 'qweasd', 'zxcvbnm',
 ];
 
-// Sequences to detect (alphabetic, numeric, etc.)
+// Tespit edilecek diziler (harf, sayı vb.)
 function hasSequences(password: string): number {
   let sequenceCount = 0;
   const lowerPassword = password.toLowerCase();
 
-  // Detect 3+ consecutive sequential characters
+  // Art arda gelen 3+ sıralı karakteri tespit et
   for (let i = 0; i < lowerPassword.length - 2; i++) {
     const char0 = lowerPassword.charCodeAt(i);
     const char1 = lowerPassword.charCodeAt(i + 1);
     const char2 = lowerPassword.charCodeAt(i + 2);
 
-    // Forward sequence
+    // İleri yönlü sıra
     if (char1 === char0 + 1 && char2 === char0 + 2) {
       sequenceCount += 2;
     }
-    // Backward sequence
+    // Geri yönlü sıra
     if (char1 === char0 - 1 && char2 === char0 - 2) {
       sequenceCount += 2;
     }
@@ -75,7 +77,7 @@ function hasSequences(password: string): number {
   return sequenceCount;
 }
 
-// Detect repetitions (3+ identical characters in a row)
+// Tekrarları tespit et (arka arkaya 3+ aynı karakter)
 function hasRepetitions(password: string): number {
   let repetitionCount = 0;
 
@@ -91,7 +93,7 @@ function hasRepetitions(password: string): number {
   return repetitionCount;
 }
 
-// Detect consecutive repeating patterns (e.g., "1212", "abab", "123123")
+// Ardışık tekrar eden kalıpları tespit et (örneğin: "1212", "abab", "123123")
 function hasConsecutiveRepeatingPatterns(password: string): number {
   let penaltyCount = 0;
   const lowerPassword = password.toLowerCase();
@@ -129,12 +131,12 @@ function hasConsecutiveRepeatingPatterns(password: string): number {
   return penaltyCount;
 }
 
-// Detect common date formats in password (e.g., "25051990", "25/05/1990", "1990-05-25")
+// Paroladaki yaygın tarih biçimlerini tespit et (örneğin: "25051990", "25/05/1990", "1990-05-25")
 function hasDatePatterns(password: string): boolean {
-  // Common date formats: DDMMYYYY, DD/MM/YYYY, DD-MM-YYYY, YYYYMMDD, YYYY-MM-DD, YYYY/MM/DD
+  // Yaygın tarih biçimleri: DDMMYYYY, DD/MM/YYYY, DD-MM-YYYY, YYYYMMDD, YYYY-MM-DD, YYYY/MM/DD
   const datePatterns = [
-    /\b(0?[1-9]|[12][0-9]|3[01])([-/]?)(0?[1-9]|1[0-2])\2(19|20)\d{2}\b/gi, // DD-MM-YYYY or similar
-    /\b(19|20)\d{2}([-/]?)(0?[1-9]|1[0-2])\2(0?[1-9]|[12][0-9]|3[01])\b/gi, // YYYY-MM-DD or similar
+    /\b(0?[1-9]|[12][0-9]|3[01])([-/]?)(0?[1-9]|1[0-2])\2(19|20)\d{2}\b/gi, // DD-MM-YYYY veya benzeri
+    /\b(19|20)\d{2}([-/]?)(0?[1-9]|1[0-2])\2(0?[1-9]|[12][0-9]|3[01])\b/gi, // YYYY-MM-DD veya benzeri
     /\b(0[1-9]|[12][0-9]|3[01])(0[1-9]|1[0-2])(19|20)\d{2}\b/g, // DDMMYYYY
     /\b(19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12][0-9]|3[01])\b/g, // YYYYMMDD
   ];
@@ -142,7 +144,7 @@ function hasDatePatterns(password: string): boolean {
   return datePatterns.some(pattern => pattern.test(password));
 }
 
-// Normalize leetspeak and common character substitutions
+// Leetspeak ve yaygın karakter dönüşümlerini normalleştir
 function normalizeLeetspeak(password: string): string {
   const leetMap: Record<string, string> = {
     '@': 'a', '4': 'a', // @ = a, 4 = a
@@ -151,7 +153,7 @@ function normalizeLeetspeak(password: string): string {
     '3': 'e', // 3 = e
     '6': 'g', // 6 = g
     '#': 'h', // # = h
-    '1': 'i', '!': 'i', // 1, !, = i
+    '1': 'i', '!': 'i', // 1, ! = i
     '0': 'o', // 0 = o
     '9': 'q', // 9 = q
     '$': 's', '5': 's', // $, 5 = s
@@ -162,19 +164,20 @@ function normalizeLeetspeak(password: string): string {
   };
 
   let normalized = password.toLowerCase();
-  // Simple character replacement without regex for leetspeak
+  
+  // Leetspeak için regex kullanmadan basit karakter değiştirme
   for (const [leet, char] of Object.entries(leetMap)) {
     normalized = normalized.split(leet).join(char);
   }
   return normalized;
 }
 
-// Detect year suffixes/prefixes (e.g., "Fenerbahce1907", "Istanbul2024")
+// Yıl son eklerini/öneklerini tespit et (örneğin: "Fenerbahce1907", "Istanbul2024")
 function hasYearSuffix(password: string): boolean {
   return /(19|20)\d{2}/.test(password);
 }
 
-// Check if password contains user's personal information
+// Parolanın kullanıcının kişisel bilgilerini içerip içermediğini kontrol et
 function checkUserContextViolation(password: string, options?: StrengthOptions): boolean {
   if (!options) return false;
 
@@ -183,16 +186,16 @@ function checkUserContextViolation(password: string, options?: StrengthOptions):
     options.username,
     options.firstName,
     options.lastName,
-    options.email?.split('@')[0], // email prefix
+    options.email?.split('@')[0], // e-posta öneki
   ].filter(Boolean) as string[];
 
   for (const info of userInfo) {
     const lowerInfo = info.toLowerCase();
-    // Check direct match
+    // Doğrudan eşleşmeyi kontrol et
     if (lowerPassword.includes(lowerInfo)) {
       return true;
     }
-    // Check reversed match
+    // Ters çevrilmiş eşleşmeyi kontrol et
     if (lowerPassword.includes(lowerInfo.split('').reverse().join(''))) {
       return true;
     }
@@ -201,7 +204,7 @@ function checkUserContextViolation(password: string, options?: StrengthOptions):
   return false;
 }
 
-// SHA-1 hash helper for HIBP API (k-anonymity model)
+// HIBP API için SHA-1 karma yardımcı fonksiyonu (k-anonimlik modeli)
 async function hashPasswordSHA1(password: string): Promise<string> {
   const encoder = new TextEncoder();
   const data = encoder.encode(password);
@@ -210,17 +213,17 @@ async function hashPasswordSHA1(password: string): Promise<string> {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
 }
 
-// Check if password has been compromised via HIBP API (Have I Been Pwned)
+// Parolanın HIBP API üzerinden ele geçirilip geçirilmediğini kontrol etttirme kısmı
 export async function checkPwnedPassword(password: string): Promise<boolean> {
   try {
     const hash = await hashPasswordSHA1(password);
-    const prefix = hash.substring(0, 5); // Send only first 5 chars (k-anonymity)
+    const prefix = hash.substring(0, 5); // Sadece ilk 5 karakteri gönder
     const suffix = hash.substring(5);
 
+
     const response = await fetch(`https://api.pwnedpasswords.com/range/${prefix}`);
-    
+    // API hatası
     if (!response.ok) {
-      // API error - assume not compromised (fail open)
       console.warn('HIBP API error:', response.status);
       return false;
     }
@@ -228,18 +231,18 @@ export async function checkPwnedPassword(password: string): Promise<boolean> {
     const text = await response.text();
     const hashes = text.split('\r\n');
 
-    // Check if our suffix is in the response
+    // Sonekimizin yanıtta olup olmadığını kontrol et
     for (const line of hashes) {
       const [hashSuffix] = line.split(':');
       if (hashSuffix === suffix) {
-        return true; // Password found in breach database
+        return true; // Parola ihlal veritabanında bulundu
       }
     }
 
-    return false; // Password not found
+    return false; // Parola bulunamadı
   } catch (error) {
     console.error('HIBP check failed:', error);
-    return false; // Assume not compromised on error
+    return false; // Hata durumunda ele geçirilmemiş varsay
   }
 }
 
@@ -383,7 +386,7 @@ export function calculateStrength(
   return getStrengthLabel(adjustedEntropy, warningSet);
 }
 
-// Compute entropy details and estimated crack times for various attacker speeds
+// Entropi ayrıntılarını ve farklı saldırgan hızları için tahmini kırılma sürelerini hesapla
 export function computeEntropyDetails(
   password: string,
   options?: StrengthOptions,
@@ -391,33 +394,33 @@ export function computeEntropyDetails(
 ) {
   const { baseEntropy, adjustedEntropy } = analyzePassword(password, options, entropyContext);
 
-  // Estimate guesses: 2^entropy
+  // Tahmini deneme sayısı: 2^entropi
   const guesses = Math.pow(2, adjustedEntropy);
 
-  // Attack speeds (guesses per second)
-  // Attack speeds chosen to approximate GRC-style categories
+  // Saldırı hızları (saniyedeki deneme sayısı)
+  // Hızlar, GRC tarzı kategorileri yaklaşık temsil edecek şekilde seçildi
   const speeds: Record<string, number> = {
-    // ~100 attempts per hour (throttled online service)
+    // Saatte yaklaşık 100 deneme (kısıtlanmış çevrimiçi hizmet)
     online_throttled: 100 / 3600,
-    // ~10 attempts per second (online, unthrottled via many IPs)
+    // Saniyede yaklaşık 10 deneme (çok sayıda IP üzerinden kısıtlanmamış çevrimiçi)
     online_unthrottled: 10,
-    // ~10k/sec (single CPU, slow offline)
+    // ~10 bin/sn (tek CPU, yavaş çevrimdışı)
     offline_slow: 1e4,
-    // ~100M/sec (GPU cluster - tuned to match common GRC-like tables)
+    // ~100 milyon/sn (GPU kümesi - yaygın GRC benzeri tablolara uyacak şekilde ayarlandı)
     offline_gpu: 1e8,
-    // ~10B/sec (very large distributed/offline cluster)
+    // ~10 milyar/sn (çok büyük dağıtık/çevrimdışı küme)
     offline_highend: 1e10,
   };
 
   const crackTimes: Record<string, number> = {};
   for (const [k, v] of Object.entries(speeds)) {
-    crackTimes[k] = guesses / v; // seconds
+    crackTimes[k] = guesses / v; // saniye
   }
 
   return { baseEntropy, adjustedEntropy, guesses, crackTimes };
 }
 
-// Check if password meets selected character type requirements
+// Parolanın belirli karakter türlerini içerip içermediğini kontrol et
 export interface PasswordCompliance {
   meetsRequirements: boolean;
   missingTypes: string[];
