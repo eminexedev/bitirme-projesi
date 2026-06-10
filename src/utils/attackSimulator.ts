@@ -1,6 +1,8 @@
 export type AttackMethod = 'dictionary' | 'mask' | 'bruteForce' | 'notCracked';
 export type AttackPhase = 'dictionary' | 'mask' | 'bruteForce';
 
+// Bu modül, verilen bir parolaya karşı sözlük saldırısı, maske saldırısı ve kaba kuvvet saldırısı simüle eder. 
+// Her aşamada ilerleme raporlaması yapılır ve sonuç olarak saldırının başarılı olup olmadığı, kullanılan yöntem, deneme sayısı, geçen süre, saniye başına deneme sayısı, tahmini tam arama süresi, aranan alan ve maksimum deneme sayısı gibi bilgiler döndürülür.
 export interface AttackSimulationResult {
   cracked: boolean;
   method: AttackMethod;
@@ -12,6 +14,7 @@ export interface AttackSimulationResult {
   maxAttempts: number;
 }
 
+// Saldırı simülasyonu seçenekleri, maksimum deneme sayısı ve ilerleme raporlaması için bir geri çağırma fonksiyonu içerebilir.
 export interface AttackProgress {
   phase: AttackPhase;
   attempts: number;
@@ -25,6 +28,11 @@ interface AttackSimulationOptions {
   onProgress?: (progress: AttackProgress) => void;
 }
 
+// Saldırı simülasyonu, verilen bir parolaya karşı çeşitli saldırı yöntemlerini kullanarak parolanın kırılmaya çalışılmasıdır.
+// İlk olarak, sözlük saldırısı ile yaygın kelimeler ve bunların varyasyonları denenir. 
+// Ardından, maske saldırısı ile yaygın kelimeler ve bunlara eklenen sayısal veya sembolik ekler denenir. 
+// Son olarak, kaba kuvvet saldırısı ile gözlemlenen karakter seti kullanılarak tüm olası kombinasyonlar denenir. 
+// Her aşamada ilerleme raporlaması yapılır ve sonuç olarak saldırının başarılı olup olmadığı, kullanılan yöntem, deneme sayısı, geçen süre, saniye başına deneme sayısı, tahmini tam arama süresi, aranan alan ve maksimum deneme sayısı gibi bilgiler döndürülür.
 const dictionaryWords = [
   'password', '123456', '12345678', 'qwerty', 'admin', 'welcome', 'letmein',
   'monkey', 'dragon', 'master', 'root', 'user', 'login', 'test', 'secret',
@@ -55,6 +63,10 @@ function toLeetspeak(value: string) {
     .replaceAll('s', '$');
 }
 
+// Parolada gözlemlenen karakter setini belirler. 
+// Küçük harfler, büyük harfler, rakamlar ve semboller için ayrı ayrı kontrol yapar ve bunları charset'e ekler. 
+// Ayrıca, parolada bulunan ancak charset'te olmayan karakterleri de ekleyerek saldırı sırasında bu karakterlerin de denenmesini sağlar. 
+// Eğer hiçbir karakter gözlemlenmezse, varsayılan olarak küçük harfleri içeren bir charset döndürür.
 function getObservedCharset(password: string) {
   let charset = '';
   if (/[a-z]/.test(password)) charset += 'abcdefghijklmnopqrstuvwxyz';
