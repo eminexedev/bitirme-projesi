@@ -203,25 +203,34 @@ async function analyzePassword(password) {
 
 async function analyzePasswordLocally(password) {
   const model = process.env.OLLAMA_MODEL || defaultLocalModel;
-  const response = await fetch('http://127.0.0.1:11434/api/generate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model,
-      stream: false,
-      format: 'json',
-      prompt: [
-        'You are a password privacy classifier.',
-        'Check only whether the password contains personal information or personal-information-like patterns.',
-        'Treat date-like values, birth-date-like numeric strings, years, phone numbers, ID numbers, names, emails, usernames and addresses as personal information risk even without user context.',
-        'Return JSON only with this shape:',
-        '{"hasPersonalInfo": boolean, "signals": string[], "explanation": string}',
-        'Allowed signals: birthDate, date, year, phone, idNumber, name, email, username, address, other.',
-        'Example: Test01012000! contains a DDMMYYYY-like birth date and should return hasPersonalInfo true with birthDate, date and year signals.',
-        `Password to classify: ${password}`,
-      ].join('\n'),
-    }),
-  });
+  let response;
+
+  try {
+    response = await fetch('http://127.0.0.1:11434/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        stream: false,
+        format: 'json',
+        prompt: [
+          'You are a password privacy classifier.',
+          'Check only whether the password contains personal information or personal-information-like patterns.',
+          'Treat date-like values, birth-date-like numeric strings, years, phone numbers, ID numbers, names, emails, usernames and addresses as personal information risk even without user context.',
+          'Return JSON only with this shape:',
+          '{"hasPersonalInfo": boolean, "signals": string[], "explanation": string}',
+          'Allowed signals: birthDate, date, year, phone, idNumber, name, email, username, address, other.',
+          'Example: Test01012000! contains a DDMMYYYY-like birth date and should return hasPersonalInfo true with birthDate, date and year signals.',
+          `Password to classify: ${password}`,
+        ].join('\n'),
+      }),
+    });
+  } catch {
+    return {
+      statusCode: 503,
+      body: { error: 'local_ai_unavailable' },
+    };
+  }
 
   if (!response.ok) {
     return {
