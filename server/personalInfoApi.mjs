@@ -18,6 +18,10 @@ const defaultModel = 'gpt-5-nano';
 const defaultLocalModel = 'llama3.1:latest';
 let envLoaded = false;
 
+function canUseLocalAiFallback() {
+  return process.env.VERCEL !== '1';
+}
+
 function loadEnvFile() {
   if (envLoaded) return;
   envLoaded = true;
@@ -124,6 +128,13 @@ async function analyzePassword(password) {
 
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
+    if (!canUseLocalAiFallback()) {
+      return {
+        statusCode: 503,
+        body: { error: 'openai_api_key_missing' },
+      };
+    }
+
     return analyzePasswordLocally(password);
   }
 
@@ -192,7 +203,7 @@ async function analyzePassword(password) {
   if (!response.ok) {
     const detail = (data.error?.message ?? responseText.slice(0, 240)) || 'OpenAI API request failed';
 
-    if (response.status === 429) {
+    if (response.status === 429 && canUseLocalAiFallback()) {
       return analyzePasswordLocally(password);
     }
 
@@ -207,6 +218,13 @@ async function analyzePassword(password) {
 
   const outputText = extractOutputText(data);
   if (!outputText) {
+    if (!canUseLocalAiFallback()) {
+      return {
+        statusCode: 502,
+        body: { error: 'openai_empty_response' },
+      };
+    }
+
     return analyzePasswordLocally(password);
   }
 
