@@ -135,7 +135,10 @@ async function analyzePassword(password) {
           content: `Password to classify: ${password}`,
         },
       ],
-      max_output_tokens: 160,
+      max_output_tokens: 1000,
+      reasoning: {
+        effort: 'minimal',
+      },
       text: {
         format: {
           type: 'json_schema',
