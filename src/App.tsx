@@ -17,6 +17,7 @@ import { ShieldCheck, Zap, RefreshCw, Wifi, Landmark, Share2, Key } from 'lucide
 import { cn } from './utils/cn';
 import { WelcomeDialog } from './components/WelcomeDialog';
 import { WifiQrDialog } from './components/WifiQrDialog';
+import { AttackSimulator } from './components/AttackSimulator';
 
 type Mode = 'standard' | 'passphrase' | 'pronounceable';
 type PresetType = 'wifi' | 'banking' | 'social' | 'admin' | null;
@@ -299,6 +300,8 @@ export default function App() {
               options={options}
             />
           </div>
+
+          <AttackSimulator password={password} />
 
           {/* Password Length & Generate - Standard Mode */}
           {mode === 'standard' && (
