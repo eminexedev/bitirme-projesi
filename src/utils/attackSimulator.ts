@@ -1,4 +1,5 @@
-export type AttackMethod = 'dictionary' | 'bruteForce' | 'notCracked';
+export type AttackMethod = 'dictionary' | 'mask' | 'bruteForce' | 'notCracked';
+export type AttackPhase = 'dictionary' | 'mask' | 'bruteForce';
 
 export interface AttackSimulationResult {
   cracked: boolean;
@@ -11,15 +12,31 @@ export interface AttackSimulationResult {
   maxAttempts: number;
 }
 
+export interface AttackProgress {
+  phase: AttackPhase;
+  attempts: number;
+  elapsedMs: number;
+  lastCandidate: string;
+  currentLength?: number;
+}
+
+interface AttackSimulationOptions {
+  maxAttempts?: number;
+  onProgress?: (progress: AttackProgress) => void;
+}
+
 const dictionaryWords = [
   'password', '123456', '12345678', 'qwerty', 'admin', 'welcome', 'letmein',
   'monkey', 'dragon', 'master', 'root', 'user', 'login', 'test', 'secret',
   'istanbul', 'ankara', 'turkiye', 'securekey', 'fenerbahce', 'galatasaray',
   'besiktas', 'trabzonspor', 'askim', 'mehmet', 'ahmet', 'emre', 'ayse',
+  'love', 'football', 'summer', 'winter', 'school', 'student', 'computer',
+  'internet', 'security', 'parola', 'sifre', 'guvenlik', 'bitirme',
 ];
 
 const dictionarySuffixes = ['', '1', '12', '123', '1234', '12345', '!', '!!', '@', '01', '00', '1907', '2024', '2025'];
 const commonSymbols = '!@#$%^&*()-_=+[]{};:,.?/|~';
+const defaultMaxAttempts = 2_000_000;
 
 function waitForBrowser() {
   return new Promise<void>((resolve) => window.setTimeout(resolve, 0));
@@ -27,6 +44,15 @@ function waitForBrowser() {
 
 function capitalize(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function toLeetspeak(value: string) {
+  return value
+    .replaceAll('a', '@')
+    .replaceAll('e', '3')
+    .replaceAll('i', '1')
+    .replaceAll('o', '0')
+    .replaceAll('s', '$');
 }
 
 function getObservedCharset(password: string) {
@@ -53,6 +79,18 @@ function getSearchSpace(charsetSize: number, maxLength: number) {
   return total;
 }
 
+function getWordVariants(word: string) {
+  const lower = word.toLowerCase();
+
+  return [...new Set([
+    lower,
+    lower.toUpperCase(),
+    capitalize(lower),
+    toLeetspeak(lower),
+    capitalize(toLeetspeak(lower)),
+  ])];
+}
+
 function indexToCandidate(index: number, length: number, charset: string) {
   let value = index;
   let candidate = '';
@@ -63,6 +101,22 @@ function indexToCandidate(index: number, length: number, charset: string) {
   }
 
   return candidate;
+}
+
+function buildProgress(
+  phase: AttackPhase,
+  attempts: number,
+  startTime: number,
+  lastCandidate: string,
+  currentLength?: number,
+) {
+  return {
+    phase,
+    attempts,
+    elapsedMs: Math.max(1, performance.now() - startTime),
+    lastCandidate,
+    currentLength,
+  };
 }
 
 function finish(
@@ -88,16 +142,36 @@ function finish(
   };
 }
 
-export async function simulatePasswordAttack(password: string, maxAttempts = 250_000): Promise<AttackSimulationResult> {
+export async function simulatePasswordAttack(
+  password: string,
+  options: AttackSimulationOptions = {},
+): Promise<AttackSimulationResult> {
+  const maxAttempts = options.maxAttempts ?? defaultMaxAttempts;
   const startTime = performance.now();
   const seenCandidates = new Set<string>();
   let attempts = 0;
+  let lastProgressAttempt = 0;
 
   const charset = getObservedCharset(password);
   const searchedSpace = getSearchSpace(charset.length, password.length);
 
+  const report = async (
+    phase: AttackPhase,
+    lastCandidate: string,
+    currentLength?: number,
+    force = false,
+  ) => {
+    if (force || attempts - lastProgressAttempt >= 25_000) {
+      lastProgressAttempt = attempts;
+      options.onProgress?.(buildProgress(phase, attempts, startTime, lastCandidate, currentLength));
+      await waitForBrowser();
+    }
+  };
+
+  await report('dictionary', '', undefined, true);
+
   for (const word of dictionaryWords) {
-    const wordVariants = [word, word.toUpperCase(), capitalize(word)];
+    const wordVariants = getWordVariants(word);
 
     for (const variant of wordVariants) {
       for (const suffix of dictionarySuffixes) {
@@ -114,8 +188,42 @@ export async function simulatePasswordAttack(password: string, maxAttempts = 250
     }
   }
 
+  await report('mask', '', undefined, true);
+
+  const maskAttemptLimit = Math.min(350_000, Math.floor(maxAttempts * 0.25));
+  let maskAttempts = 0;
+
+  for (const word of dictionaryWords) {
+    const wordVariants = getWordVariants(word);
+
+    for (const variant of wordVariants) {
+      for (let number = 0; number <= 9999 && attempts < maxAttempts && maskAttempts < maskAttemptLimit; number += 1) {
+        const numberText = number.toString();
+        const paddedNumberText = number.toString().padStart(4, '0');
+
+        for (const suffix of [numberText, paddedNumberText]) {
+          for (const candidate of [variant + suffix, suffix + variant]) {
+            if (seenCandidates.has(candidate)) continue;
+            seenCandidates.add(candidate);
+            attempts += 1;
+            maskAttempts += 1;
+
+            if (candidate === password) {
+              return finish('mask', attempts, startTime, searchedSpace, maxAttempts);
+            }
+          }
+        }
+
+        if (maskAttempts % 25_000 === 0) {
+          await report('mask', `${variant}${numberText}`);
+        }
+      }
+    }
+  }
+
   for (let length = 1; length <= password.length && attempts < maxAttempts; length += 1) {
     const combinations = charset.length ** length;
+    await report('bruteForce', '', length, true);
 
     for (let index = 0; index < combinations && attempts < maxAttempts; index += 1) {
       const candidate = indexToCandidate(index, length, charset);
@@ -126,8 +234,8 @@ export async function simulatePasswordAttack(password: string, maxAttempts = 250
         return finish('bruteForce', attempts, startTime, searchedSpace, maxAttempts);
       }
 
-      if (attempts % 5000 === 0) {
-        await waitForBrowser();
+      if (attempts % 25_000 === 0) {
+        await report('bruteForce', candidate, length);
       }
     }
   }
