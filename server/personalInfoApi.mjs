@@ -64,6 +64,18 @@ function writeJson(res, statusCode, body) {
   res.end(JSON.stringify(body));
 }
 
+async function readJsonPayload(req) {
+  if (req.body && typeof req.body === 'object') {
+    return req.body;
+  }
+
+  if (typeof req.body === 'string') {
+    return JSON.parse(req.body);
+  }
+
+  return JSON.parse(await readBody(req));
+}
+
 function extractOutputText(data) {
   if (typeof data.output_text === 'string') {
     return data.output_text;
@@ -265,7 +277,7 @@ export async function personalInfoApiHandler(req, res) {
   }
 
   try {
-    const payload = JSON.parse(await readBody(req));
+    const payload = await readJsonPayload(req);
     const password = typeof payload.password === 'string' ? payload.password : '';
     if (!password) {
       writeJson(res, 400, { error: 'password_required' });
