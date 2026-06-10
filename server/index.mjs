@@ -2,7 +2,6 @@ import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { personalInfoApiHandler } from './personalInfoApi.mjs';
 
 const rootDir = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const distDir = join(rootDir, 'dist');
@@ -27,10 +26,6 @@ function sendFile(res, filePath) {
 }
 
 createServer(async (req, res) => {
-  if (await personalInfoApiHandler(req, res)) {
-    return;
-  }
-
   const url = new URL(req.url ?? '/', `http://localhost:${port}`);
   const requestedPath = decodeURIComponent(url.pathname);
   const filePath = join(distDir, requestedPath === '/' ? 'index.html' : requestedPath);

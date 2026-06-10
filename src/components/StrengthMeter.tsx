@@ -2,13 +2,12 @@ import { type PasswordEntropyContext, type Strength, type StrengthResult, type S
 import { computeEntropyDetails } from '../utils/strengthCalculator';
 import { cn } from '../utils/cn';
 import { AlertTriangle } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { KAnonymityDialog } from './KAnonymityDialog';
 import { useLanguage } from '../i18n/useLanguage.ts';
 import { translations } from '../i18n/translations.ts';
 import { type PasswordOptions } from '../utils/passwordGenerator';
 import { EntropyInfoDialog } from './EntropyInfoDialog';
-import { checkPersonalInfoWithAi, type PersonalInfoAiResult, type PersonalInfoSignal } from '../utils/personalInfoAiChecker';
 
 const strengthTranslationKeyMap: Record<Strength, keyof typeof translations.en> = {
   Weak: 'weak',
@@ -37,9 +36,6 @@ export function StrengthMeter({ password, strength, entropyContext, pwnedCount, 
   const labelClassName = 'text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground';
   const [showKAnon, setShowKAnon] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
-  const [personalInfoAiResult, setPersonalInfoAiResult] = useState<PersonalInfoAiResult | null>(null);
-  const [isCheckingPersonalInfo, setIsCheckingPersonalInfo] = useState(false);
-  const [personalInfoCheckFailed, setPersonalInfoCheckFailed] = useState(false);
 
   const formatGuesses = (g: number) => {
     if (!isFinite(g)) return '∞';
@@ -90,60 +86,6 @@ export function StrengthMeter({ password, strength, entropyContext, pwnedCount, 
 
     return t(warningMap[warning]);
   };
-
-  const getPersonalInfoSignalText = (signal: PersonalInfoSignal): string => {
-    const signalMap: Record<PersonalInfoSignal, keyof typeof translations.en> = {
-      birthDate: 'aiSignalBirthDate',
-      date: 'aiSignalDate',
-      year: 'aiSignalYear',
-      phone: 'aiSignalPhone',
-      idNumber: 'aiSignalIdNumber',
-      name: 'aiSignalName',
-      email: 'aiSignalEmail',
-      username: 'aiSignalUsername',
-      address: 'aiSignalAddress',
-      other: 'aiSignalOther',
-    };
-
-    return t(signalMap[signal]);
-  };
-
-  useEffect(() => {
-    let isActive = true;
-
-    setPersonalInfoAiResult(null);
-    setPersonalInfoCheckFailed(false);
-
-    if (!password) {
-      setIsCheckingPersonalInfo(false);
-      return () => {
-        isActive = false;
-      };
-    }
-
-    setIsCheckingPersonalInfo(true);
-    const timer = window.setTimeout(() => {
-      void (async () => {
-        try {
-          const result = await checkPersonalInfoWithAi(password);
-          if (!isActive) return;
-
-          setPersonalInfoAiResult(result);
-          setIsCheckingPersonalInfo(false);
-        } catch {
-          if (!isActive) return;
-
-          setPersonalInfoCheckFailed(true);
-          setIsCheckingPersonalInfo(false);
-        }
-      })();
-    }, 650);
-
-    return () => {
-      isActive = false;
-      window.clearTimeout(timer);
-    };
-  }, [password]);
 
   return (
     <div className="flex flex-col gap-2 w-full mt-4">
@@ -290,36 +232,6 @@ export function StrengthMeter({ password, strength, entropyContext, pwnedCount, 
                 <li key={warning}>{getStrengthWarningText(warning)}</li>
               ))}
             </ul>
-          </div>
-        </div>
-      )}
-
-      {isCheckingPersonalInfo && Boolean(password) && (
-        <div className="text-[11px] font-medium tracking-wide text-muted-foreground animate-pulse mt-2">
-          {t('aiPersonalInfoChecking')}
-        </div>
-      )}
-
-      {personalInfoCheckFailed && Boolean(password) && (
-        <div className="flex items-start gap-2 mt-2 p-3 bg-amber-500/10 border border-amber-500/30 rounded-md text-amber-700 dark:text-amber-500">
-          <AlertTriangle size={18} className="shrink-0 mt-0.5" />
-          <div className="text-sm leading-relaxed">
-            {t('aiPersonalInfoUnavailable')}
-          </div>
-        </div>
-      )}
-
-      {password && personalInfoAiResult?.hasPersonalInfo && (
-        <div className="flex items-start gap-2 mt-2 p-3 bg-rose-500/10 border border-rose-500/30 rounded-md text-rose-700 dark:text-rose-400">
-          <AlertTriangle size={18} className="shrink-0 mt-0.5" />
-          <div className="text-sm leading-relaxed">
-            <strong>{t('aiPersonalInfoTitle')}</strong> {t('aiPersonalInfoDescription')}
-            <div className="mt-1 text-xs">
-              {t('aiPersonalInfoDetected')}: <strong>{personalInfoAiResult.signals.map(getPersonalInfoSignalText).join(', ')}</strong>
-            </div>
-            <div className="mt-1 text-xs">
-              {t('aiPersonalInfoModel')}: <strong>{personalInfoAiResult.model}</strong>
-            </div>
           </div>
         </div>
       )}

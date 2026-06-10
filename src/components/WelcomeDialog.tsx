@@ -18,7 +18,7 @@ export function WelcomeDialog({ isOpen, onClose, onAcknowledge }: WelcomeDialogP
       paragraphs: [
         'SecureKey helps you create strong, unique passwords locally in your browser. Generated passwords stay on your device.',
         'We perform an optional breach check using a privacy-preserving method called k-anonymity (we only send a short hash prefix — the server cannot see your full password).',
-        'The AI personal information check sends the entered password to the backend model only for analysis. Always use a password manager for important credentials and enable multi-factor authentication where available.'
+        'Always use a password manager for important credentials and enable multi-factor authentication where available.'
       ],
       acknowledge: 'I have read and understand',
       close: 'Close'
@@ -28,7 +28,7 @@ export function WelcomeDialog({ isOpen, onClose, onAcknowledge }: WelcomeDialogP
       paragraphs: [
         'SecureKey, güçlü ve benzersiz şifreleri tarayıcınızda yerel olarak oluşturmanıza yardımcı olur. Üretilen şifreler cihazınızda kalır.',
         'İsteğe bağlı bir ihlal kontrolü için k-anonymity adlı gizliliği koruyan bir yöntem kullanıyoruz (yalnızca kısa bir hash ön eki gönderilir.)',
-        'Yapay zeka kişisel bilgi kontrolü, girilen şifreyi yalnızca analiz için backend modeline gönderir. Önemli hesaplar için parola yöneticisi kullanın ve mümkünse çok faktörlü kimlik doğrulamayı etkinleştirin.'
+        'Önemli hesaplar için parola yöneticisi kullanın ve mümkünse çok faktörlü kimlik doğrulamayı etkinleştirin.'
       ],
       acknowledge: 'Okudum ve anladım',
       close: 'Kapat'

@@ -2,20 +2,10 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
-import { personalInfoApiHandler } from './server/personalInfoApi.mjs'
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
-    {
-      name: 'personal-info-api',
-      configureServer(server) {
-        server.middlewares.use(async (req, res, next) => {
-          if (await personalInfoApiHandler(req, res)) return;
-          next();
-        });
-      },
-    },
     react(),
     tailwindcss(),
     VitePWA({
